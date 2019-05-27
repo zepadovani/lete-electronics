@@ -1,0 +1,21 @@
+// Preferences are saved in this file in pairs of symbols (keys) and strings (data) and are then loaded in a Dictionary
+// The file can be later compiled to load the Dictionary with the stored values
+
+
+~letePrefs = Dictionary.newFrom([
+	'sp4', "-45",
+	'decodeSetup', "stereo",
+	'sp5', "45",
+	'sp3', "135",
+	'sp7', "135",
+	'mic1', "0",
+	'sp6', "-135",
+	'memSize', "17",
+	'outDev', "Built-in Output",
+	'playMode', "Audio File",
+	'inDev', "Built-in Microph",
+	'sp0', "-45",
+	'mic2', "1",
+	'sp1', "45",
+	'sp2', "-135",
+];)
