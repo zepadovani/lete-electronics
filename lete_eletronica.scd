@@ -29,12 +29,23 @@
 	var playStatusFunction;
 	var leteTitleView, leteTitleText, leteTitleText2, leteTitleText3;
 	var playControlTitleView, playControlTitleText, playControlView;
+	var playLevelsTitleView, playLevelsTitleText, playLevelsView;
 
 	var playModeMenu, playStatusTextTitle, playStatusText;
 	var lastEventNumber = 100;
+	var mic1LevelIndicatorText,mic2LevelIndicatorText;
+	var mic1LevelIndicator,mic2LevelIndicator;
+	var mic1OSCResponder,mic2OSCResponder;
+	var numDeviceInputs = 16;
+	var numDeviceOutputs = 16;
+
 
 
 	var mic1InterfaceBus, mic2InterfaceBus;
+
+
+	var synthMic1Level,synthMic2Level;
+
 
 
 
@@ -81,6 +92,9 @@
 
 	};
 
+
+	s.options.numInputBusChannels = numDeviceInputs;
+	s.options.numOutputBusChannels = numDeviceOutputs;
 
 	devicesIn = ["----"] ++ ServerOptions.inDevices;
 	devicesOut = ["----"] ++ ServerOptions.outDevices;
@@ -503,13 +517,19 @@
 
 			s.waitForBoot({
 
-				mic1InterfaceBus = Bus.new('audio',mic1BusSetup.asInteger,1);
-				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger,1);
 
-				mic1InterfaceBus.scope;
-				mic2InterfaceBus.scope;
+				mic1InterfaceBus = Bus.new('audio',mic1BusSetup.asInteger + numDeviceInputs,1);
+				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1);
 
 
+
+				//				mic1InterfaceBus.scope;
+				//				mic2InterfaceBus.scope;
+
+
+				synthMic1Level = Synth(\leteMic1Level,[\inbus, mic1InterfaceBus],addAction: \addToHead);
+
+				synthMic2Level = Synth(\leteMic2Level,[\inbus, mic2InterfaceBus],addAction: \addToHead);
 
 			});
 
@@ -554,6 +574,39 @@
 	playStatusTextTitle = StaticText.new(playControlView,Rect(10,50,390,20)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
 
 	playStatusText = StaticText.new(playControlView,Rect(170,48,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
+
+
+	playLevelsTitleView = UserView(leteControlTab,Rect(2,431,300,29)).background_(Color.hsv(1,0,0.2));
+	playLevelsTitleText = StaticText.new(playLevelsTitleView,Rect(10,3,390,20)).string_("LEVELS").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
+
+	playLevelsView = UserView(leteControlTab,Rect(2,460,300,400)).background_(Color.hsv(1,0,0.3));
+
+
+	mic1LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,8,47,15)).string_("mic 1").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
+
+	mic1LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 10, 100, 15)).drawsPeak_(true).style_(\led).numTicks_(10) ;
+
+
+
+	mic1OSCResponder = OSCFunc({arg msg;
+		{
+			mic1LevelIndicator.value = msg[4].ampdb.linlin(-40, 0, 0, 1);
+			mic1LevelIndicator.peakLevel = msg[3].ampdb.linlin(-40, 0, 0, 1);
+		}.defer;
+	},'/mic1Level', s.addr);
+
+	mic2OSCResponder = OSCFunc({arg msg;
+		{
+			mic2LevelIndicator.value = msg[4].ampdb.linlin(-40, 0, 0, 1);
+			mic2LevelIndicator.peakLevel = msg[3].ampdb.linlin(-40, 0, 0, 1);
+		}.defer;
+	},'/mic2Level', s.addr);
+
+
+	mic2LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,28,47,15)).string_("mic 2").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
+
+	mic2LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 30, 100, 15)).drawsPeak_(true).style_(\led).numTicks_(10) ;
+
 
 
 
