@@ -35,7 +35,8 @@
 	var lastEventNumber = 100;
 	var mic1LevelIndicatorText,mic2LevelIndicatorText;
 	var mic1LevelIndicator,mic2LevelIndicator;
-	var mic1OSCResponder,mic2OSCResponder;
+	var mapdBtoVuNormalFunction;
+	var micsOSCResponder;
 	var numDeviceInputs = 16;
 	var numDeviceOutputs = 16;
 
@@ -584,28 +585,39 @@
 
 	mic1LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,8,47,15)).string_("mic 1").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
 
-	mic1LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 10, 100, 15)).drawsPeak_(true).style_(\led).numTicks_(10) ;
+	mic1LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 10, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(10) ;
+
+	mic2LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,38,47,15)).string_("mic 2").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
+
+	mic2LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 40, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(10) ;
 
 
 
-	mic1OSCResponder = OSCFunc({arg msg;
+
+	micsOSCResponder = OSCFunc({arg msg;
 		{
-			mic1LevelIndicator.value = msg[4].ampdb.linlin(-40, 0, 0, 1);
-			mic1LevelIndicator.peakLevel = msg[3].ampdb.linlin(-40, 0, 0, 1);
+			case
+			{msg[2] == 20}{
+				// ~rms = ([0.000001] ++ (0.1,0.2..2.0))
+				// ~dB = ~rms.ampdb.clip(-70,6)
+				// ~mapToVu = ~dB.lincurve(-70.0,6,0,1.999,8.3).round(0.1)
+
+				/*					mic1LevelIndicator.value = msg[4].ampdb.lincurve(-120.0,6,0,1.999,14.544).round(0.001);
+				mic1LevelIndicator.peakLevel = msg[3].ampdb.lincurve(-120.0,0,-120,6,2.8401812832056).dbamp.round(0.01);*/
+
+
+				mic1LevelIndicator.value = msg[4].ampdb.linlin(-80.0,0,0,1,\min);
+				mic1LevelIndicator.peakLevel = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 21}{
+				mic2LevelIndicator.value = msg[4].ampdb.linlin(-80.0,0,0,1,\min);
+				mic2LevelIndicator.peakLevel = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
+			};
 		}.defer;
-	},'/mic1Level', s.addr);
-
-	mic2OSCResponder = OSCFunc({arg msg;
-		{
-			mic2LevelIndicator.value = msg[4].ampdb.linlin(-40, 0, 0, 1);
-			mic2LevelIndicator.peakLevel = msg[3].ampdb.linlin(-40, 0, 0, 1);
-		}.defer;
-	},'/mic2Level', s.addr);
+	},'/micLevel', s.addr);
 
 
-	mic2LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,28,47,15)).string_("mic 2").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
 
-	mic2LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 30, 100, 15)).drawsPeak_(true).style_(\led).numTicks_(10) ;
 
 
 
