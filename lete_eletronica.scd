@@ -65,7 +65,7 @@
 	var currentChordNotesMidi = [ ];
 	var chordNotesMidiArray = [ ];
 
-	var ultimoAcorde = [ ]
+	var lastChordNotesMidi = [ ];
 
 	var currentChordNotesAmps = [ ];
 	var chordsNotesAmpsArray = [ ];
@@ -890,11 +890,11 @@
 
 				currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
 
-				(currentChordNotesMidi.round(0.1) != ultimoAcorde).if({
+				(currentChordNotesMidi.round(0.1) != lastChordNotesMidi).if({
 					[currentChordNotesMidi.round(0.25),currentChordNotesAmps.round(0.1)].flop.postln;
 				});
 
-				ultimoAcorde = currentChordNotesMidi.round(0.1);
+				lastChordNotesMidi = currentChordNotesMidi.round(0.1);
 
 			}
 
