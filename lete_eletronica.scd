@@ -62,11 +62,13 @@
 	var currentSoneEnvelope = [ ];
 	var soneEnvelopesArray = [ ];
 
-	var currentChord = [ ];
-	var chordsArray = [ ];
+	var currentChordNotesMidi = [ ];
+	var chordNotesMidiArray = [ ];
 
-	var currentChordNotesSones = [ ];
-	var chordsSonesArray = [ ];
+	var ultimoAcorde = [ ]
+
+	var currentChordNotesAmps = [ ];
+	var chordsNotesAmpsArray = [ ];
 
 
 
@@ -75,17 +77,20 @@
 	var currentPeak = 0;
 	var noteState = 0;
 
-	var threshNotesDetection = 0.5;
+	var threshNotesDetection = 0.333;
+	var threshJoin = 0.5;
+
+	var routinePlayPlings;
 
 
 	playModes = ["Audio File","Live"];
 
 	checkAndAddNote = {arg midiNote, notesArray, noteAmp, ampArray, thresh=threshNotesDetection;
-		var difs, min, indmin;
+		var difs, min, indmin,flopVals;
 
 		notesArray.isEmpty.if({
 			notesArray = notesArray.add(midiNote);
-//			ampArray = ampArray.add(noteAmp);
+			ampArray = ampArray.add(noteAmp);
 		},{
 			difs = (notesArray-midiNote).abs;
 			min = difs.minItem;
@@ -93,22 +98,41 @@
 			(min <= thresh).if({var index,oldNoteVal, oldDinVal;
 				index = difs.indexOfEqual(min);
 				oldNoteVal = notesArray[index];
-//				oldDinVal = ampArray[index];
+				oldDinVal = ampArray[index];
 				notesArray[index] = (oldNoteVal + midiNote)/2;
-//				ampArray[index] = (oldDinVal+noteAmp)/2; //conferir se essa média faz sentido em sones....
+				ampArray[index] = [oldDinVal,noteAmp].maxItem; //conferir se essa média faz sentido em dBs....
 			},{
 				notesArray = notesArray.add(midiNote);
-//				ampArray = ampArray.add(noteAmp);
+				ampArray = ampArray.add(noteAmp);
 			});
 		});
-		notesArray.sort;
+		flopVals = [notesArray,ampArray].flop;
+
+		flopVals.sort({arg a,b;
+			a[0] < b[0]}).flop;
 	};
 
-	takeMeanOfCloseValuesInList = {arg list, thresh=threshNotesDetection;
 
-		(list.notNil).if({
-			list.notEmpty.if({
-				list.separate({ arg a, b; (b - a) >= thresh }).collect({arg i; i.mean})
+
+	takeMeanOfCloseValuesInList = {arg chordDin, thresh=threshJoin;
+		var groupClumps;
+		var	listNotes, listAmps;
+
+		listNotes = chordDin[0];
+		listAmps =  chordDin[1];
+
+		(listNotes.notNil).if({
+			listNotes.notEmpty.if({
+				listNotes = listNotes.separate({ arg a, b; (b - a) >= thresh });//.collect({arg i; i.mean})
+
+				groupClumps = listNotes.collect({arg i; i.size});
+
+				listAmps = listAmps.clumps(groupClumps);
+
+				listNotes = listNotes.collect({arg i; i.mean});
+				listAmps = listAmps.collect({arg i; i.maxItem});
+
+				[listNotes,listAmps]
 			})
 		});
 	};
@@ -591,7 +615,8 @@
 			],playAudioFileSynth,\addAfter);
 
 
-			audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\thresh,0.06,\time,0.1],mlisteningGroup);
+
+
 
 		}.fork(AppClock);
 
@@ -639,6 +664,11 @@
 
 				synthMic1Level = Synth(\leteMic1Level,[\inbus, mic1InterfaceBus],sourceGroup,addAction: \addToHead);
 				synthMic2Level = Synth(\leteMic2Level,[\inbus, mic2InterfaceBus],sourceGroup,addAction: \addToHead);
+
+			audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\thresh,0.06,\time,0.1],mlisteningGroup);
+
+
+
 
 			});
 
@@ -806,66 +836,65 @@
 
 
 	pitchesOSCResponder = OSCFunc({arg msg;
-		{var ultimoAcorde = [ ];
+		{;
 			case
 			{msg[2] == 51}{//onset;
-				"========on".postln;
+				"||||||||||ONSET!".postln;
 				(noteState == 1).if({
-					currentChord.postln;
 					noteState = 0;
-					chordsArray = chordsArray.add(currentChord);
+					chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
+					chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
 					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
-					"ac: ".post;
-					currentChord.postln;
-					"din: ".post;
-					currentSoneEnvelope.postln;
-					currentChord = [ ];
+					"LAST CHORD: ".postln;
+					"=> ".post;
+					[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
+					currentChordNotesMidi = [ ];
+					currentChordNotesAmps = [ ];
 					currentSoneEnvelope = [ ];
 					acordNum = acordNum + 1;
-					"_________off".postln;
-					"------------------------------".postln;
-					thisOnsetPeak = 0;
+					thisOnsetPeak = -inf;
 				});
 				noteState = 1;
 				thisOnsetPeak = currentPeak;
 
-
-
 			}
-			{msg[2] == 52}{
-				currentPeak = msg[3];
-				(((thisOnsetPeak - currentPeak)) > 0.02).if({
-					noteState = 0;
-					chordsArray = chordsArray.add(currentChord);
-					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
-					"ac: ".post;
-					currentChord.postln;
-					"din: ".post;
-					currentSoneEnvelope.postln;
-					currentChord = [ ];
-					currentSoneEnvelope = [ ];
-					acordNum = acordNum + 1;
-					"_________off".postln;
-					"------------------------------".postln;
-					thisOnsetPeak = 0;
-				});
-				//				msg.postln;
+			/*			{msg[2] == 52}{ //impulse
+			currentPeak = msg[3];
+			(((thisOnsetPeak - currentPeak)) > 0.3).if({
+			noteState = 0;
+			chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
+			soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
+			"ac: ".post;
+			currentChordNotesMidi.postln;
+			"din: ".post;
+			currentSoneEnvelope.postln;
+			currentChordNotesMidi = [ ];
+			currentSoneEnvelope = [ ];
+			acordNum = acordNum + 1;
+			"_________off".postln;
+			"------------------------------".postln;
+			thisOnsetPeak = 0;
+			});
+			//				msg.postln;
 
-			}
-			{msg[2] == 50}{var dinamica,nota;
+			}*/
+			{msg[2] == 50}{var dinamica,nota,chordDin;
 
-				dinamica = msg[3];
+				dinamica = msg[7];
 				nota = msg[6];
 
-				currentChord = checkAndAddNote.(nota,currentChord,dinamica,currentChordNotesSones,thresh:threshNotesDetection);
-				currentChord = takeMeanOfCloseValuesInList.(currentChord,threshNotesDetection);
+				chordDin = checkAndAddNote.(nota,currentChordNotesMidi,dinamica,currentChordNotesAmps,thresh:threshNotesDetection);
+				chordDin = takeMeanOfCloseValuesInList.(chordDin,threshJoin);
+				currentChordNotesMidi = chordDin[0]; //alturas processadas
+				currentChordNotesAmps = chordDin[1]; //respectivas dinamicas
+
 				currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
 
-				(currentChord != ultimoAcorde).if({
-					currentChord.postln;
+				(currentChordNotesMidi.round(0.1) != ultimoAcorde).if({
+					[currentChordNotesMidi.round(0.25),currentChordNotesAmps.round(0.1)].flop.postln;
 				});
 
-				ultimoAcorde = currentChord;
+				ultimoAcorde = currentChordNotesMidi.round(0.1);
 
 			}
 

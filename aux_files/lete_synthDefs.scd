@@ -68,7 +68,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 	{arg pianoStereoInBus,thresh=0.1,time=0.1,trigtime=0.5;
 
 		var in,onset,pitches,lastAmp,maxvoices=4, freq, hasFreq;
-		var chain,trig,amp,amp2,meanamp,changedamp,gate;
+		var chain,trig,amp,amp2,meanamp,changedamp,gate,noteAmp;
 		in = Mix.ar(In.ar(pianoStereoInBus,2));
 		chain = FFT(LocalBuf(1024), in);
 		amp2 = PeakFollower.kr(in);
@@ -78,10 +78,22 @@ SynthDef(\noteAnalyzerPolyPitch,
 		changedamp = Decay.kr(Changed.kr(meanamp),time);
 		gate = Gate.kr(Impulse.kr(50),changedamp);
 		#freq, hasFreq= Tartini.kr(in,0.6,512,k: 64);
+		noteAmp = Amplitude.kr(in,0.05,1).ampdb;
 		SendReply.kr(Impulse.kr(50),'/pitches',amp2,52);
 		SendReply.kr(onset,'/pitches',amp,51);
-		SendReply.kr(gate,'/pitches',[amp,meanamp,hasFreq,freq.cpsmidi],50);
+		SendReply.kr(gate,'/pitches',[amp,meanamp,hasFreq,freq.cpsmidi,noteAmp],50);
 	}
 ).add;
+
+
+SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0;
+	var sinosc,envgen,bf;
+	sinosc = SinOsc.ar(freq)*amp;
+	envgen = EnvGen.ar(Env.perc(att,dur-att,level: curve),1,amp,doneAction: 2);
+	bf = BFEncode1.ar(sinosc*envgen,azi,el,rho);
+	Out.ar(outbusBF, bf);
+	}
+).add;
+
 
 
