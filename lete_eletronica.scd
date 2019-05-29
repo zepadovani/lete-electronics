@@ -1,14 +1,14 @@
 
-
-
-
-
-
 (
+~angles = [ 45, 315, 225, 135]; //FL, FR, BR, BL
+~aziEspaco = ~angles/180 * pi;
+
 {var devices, devChooseWin, saveprefsDic;
 	var devicesIn, devicesOut, deviceIn, deviceOut;
 	var mic1BusSetup, mic2BusSetup, mic1BusSetupInText, mic2BusSetupInText,mic1BusSetupStaticText, mic2BusSetupStaticText, prefFile, prefFileText,prefFileView,prefFileStatic,loadOtherPref;
+	var pianoStereoBus;
 	var leteTabbedView, letePrefsTab, leteControlTab;
+
 	var leteMainWindow;
 	var savePrefsButton;
 	var interfaceInChoose, interfaceOutChoose;
@@ -23,6 +23,8 @@
 	var spAngView, angleAdjust, speakersAnglesIn;
 	var saveTitView, savText;
 	var serverBootView, serverBootTitleView, serverBootTitle, serverBootButton, serverState;
+	var playAudioFileRoutine, stopAudioFileRoutine, playAudioFileSynth;
+	var routeAudioFileToBFSynth,routeAudioFileToBFSynth2;
 	var runStartServerRoutine, runStopServerRoutine;
 	var playModes, playMode;
 	var playCount = -1;
@@ -30,28 +32,66 @@
 	var leteTitleView, leteTitleText, leteTitleText2, leteTitleText3;
 	var playControlTitleView, playControlTitleText, playControlView;
 	var playLevelsTitleView, playLevelsTitleText, playLevelsView;
+	var playFileButton;
 
 	var playModeMenu, playStatusTextTitle, playStatusText;
 	var lastEventNumber = 100;
+	var audioFileLevelIndicatorText,audioFileLevelIndicator;
 	var mic1LevelIndicatorText,mic2LevelIndicatorText;
 	var mic1LevelIndicator,mic2LevelIndicator;
 	var mapdBtoVuNormalFunction;
-	var micsOSCResponder;
+	var levelsOSCResponder;
 	var numDeviceInputs = 16;
 	var numDeviceOutputs = 16;
-
-
+	var audioFileBuffer;
+	var outLevelMainText, outLevelIndicatorTexts, outLevelIndicators;
 
 	var mic1InterfaceBus, mic2InterfaceBus;
 
+	var audioAnalyseSynth, audioDetectedPitches,pitchesOSCResponder;
 
-	var synthMic1Level,synthMic2Level;
+	var synthMic1Level,synthMic2Level, synthOutLevel;
+	var synthDecoder;
 
+	var sourceGroup, afterSourceGroup, mlisteningGroup, sourceProcessingGroup, midProcessingGroup, tailProcessingGroup, reverbGroupA, reverbGroupB, decodeGroup, postDecodeGroup;
 
+	var busBFtoDecodeMain,pianoBFBus;
 
+	var checkAndAddNote;
+
+	var dinamicas = [ ];
+	var acordes = [ ];
+	var acordeAtual = [ ];
+	var dinamicaAtual = [ ];
+	var acordNum = -1;
+	var thisOnsetPeak = 0;
+	var currentPeak = 0;
+	var noteState = 0;
 
 
 	playModes = ["Audio File","Live"];
+
+	//função para analisar harmonia de cada trecho
+	checkAndAddNote = {arg n, arr, thresh=0.7;
+		var difs, min, indmin;
+
+		arr.isEmpty.if({
+			arr = arr.add(n);
+		},{
+			difs = (arr-n).abs;
+			min = difs.minItem;
+
+			(min <= thresh).if({var index,oldval;
+				index = difs.indexOfEqual(min);
+				oldval = arr[index];
+				arr[index] = (oldval+n/2).round(0.01);
+			},{
+				arr = arr.add(n);
+			});
+		});
+		arr.sort;
+	};
+
 
 	playStatusFunction = {
 		case
@@ -510,6 +550,38 @@
 		serverBootButton.value_(0);
 	});
 
+	playAudioFileRoutine = {
+		{
+			playAudioFileSynth = Synth(\playAudioFile,
+				[
+					\outbus, pianoStereoBus,
+					\bufnum, audioFileBuffer,
+					\amp,1.0],
+				sourceGroup);
+
+			routeAudioFileToBFSynth = Synth(\routeStereoToBF,
+				[
+					\inbus, pianoStereoBus,
+					\outbus, busBFtoDecodeMain,
+					\azi, 0, //AJUSTAR
+					\env, Env([0,1,0],[0.1,5],\sin,1).asArray
+
+			],playAudioFileSynth,\addAfter);
+
+
+			audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\thresh,0.06,\time,0.1],mlisteningGroup);
+
+		}.fork(AppClock);
+
+	};
+
+	stopAudioFileRoutine = {
+		{
+			playAudioFileSynth.free;
+		}.fork(AppClock);
+
+	};
+
 	runStartServerRoutine = {
 		{
 			leteMainWindow.background_(Color.hsv(0.35,0.2,0.8,1));
@@ -518,19 +590,33 @@
 
 			s.waitForBoot({
 
+				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
 
-				mic1InterfaceBus = Bus.new('audio',mic1BusSetup.asInteger + numDeviceInputs,1);
-				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1);
+				mic1InterfaceBus = Bus.new('audio',mic1BusSetup.asInteger + numDeviceInputs,1,s);
+				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1,s);
 
+				pianoStereoBus = Bus.new('audio',mic2InterfaceBus.index + 1,2,s);
+				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
 
+				busBFtoDecodeMain = Bus.new('audio',140,4,s);
 
-				//				mic1InterfaceBus.scope;
-				//				mic2InterfaceBus.scope;
+				sourceGroup = Group.new;
+				afterSourceGroup = Group.new(sourceGroup,\addAfter);
+				mlisteningGroup = Group.new(afterSourceGroup,\addAfter);
+				sourceProcessingGroup = Group.new(mlisteningGroup,\addAfter);
+				midProcessingGroup = Group.new(sourceProcessingGroup,\addAfter);
+				tailProcessingGroup = Group.new(midProcessingGroup,\addAfter);
+				reverbGroupA = Group.new(tailProcessingGroup,\addAfter);
+				reverbGroupB = Group.new(reverbGroupA,\addAfter);
+				decodeGroup = Group.new(reverbGroupB,\addAfter);
+				postDecodeGroup = Group.new(decodeGroup,\addAfter);
 
+				synthDecoder = Synth(\BFdecoder, [\ambInbus, busBFtoDecodeMain, \outbus, 0],decodeGroup);
 
-				synthMic1Level = Synth(\leteMic1Level,[\inbus, mic1InterfaceBus],addAction: \addToHead);
+				synthOutLevel = Synth(\leteOutLevels,target: postDecodeGroup);
 
-				synthMic2Level = Synth(\leteMic2Level,[\inbus, mic2InterfaceBus],addAction: \addToHead);
+				synthMic1Level = Synth(\leteMic1Level,[\inbus, mic1InterfaceBus],sourceGroup,addAction: \addToHead);
+				synthMic2Level = Synth(\leteMic2Level,[\inbus, mic2InterfaceBus],sourceGroup,addAction: \addToHead);
 
 			});
 
@@ -565,36 +651,197 @@
 			}
 		],
 		initVal: playModes.indexOfEqual(playMode),
-		initAction: false,
+		initAction: true,
 		labelWidth: 40,
 		labelHeight: 28,
 		layout: \vertical,
 		gap: 2@2
 	);
 
-	playStatusTextTitle = StaticText.new(playControlView,Rect(10,50,390,20)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
-
-	playStatusText = StaticText.new(playControlView,Rect(170,48,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
 
 
-	playLevelsTitleView = UserView(leteControlTab,Rect(2,431,300,29)).background_(Color.hsv(1,0,0.2));
-	playLevelsTitleText = StaticText.new(playLevelsTitleView,Rect(10,3,390,20)).string_("LEVELS").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
+	playStatusTextTitle = StaticText.new(playControlView,Rect(10,110,390,20)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
 
-	playLevelsView = UserView(leteControlTab,Rect(2,460,300,400)).background_(Color.hsv(1,0,0.3));
+	playStatusText = StaticText.new(playControlView,Rect(170,108,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
+
+	playFileButton = Button(playControlView, Rect(150,5,130,30))	.states_([
+		["Play Audio File", Color.hsv(0.35,0.4,0.9), Color.hsv(0,0,0.6)],
+		["Stop Audio File", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
+	]).action_({arg i;
+		var valor;
+		valor = i.value;
+
+		(valor == 1).if(
+			{playAudioFileRoutine.value;},
+			{stopAudioFileRoutine.value;
+		});
+
+		/*		{
+		}.fork(AppClock);*/
+	});
 
 
-	mic1LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,8,47,15)).string_("mic 1").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
+	{var tty=48,tx=40,ty=60,lx=8,ly=35,mic="audio file";
+		audioFileLevelIndicatorText = [ StaticText.new(playControlView,Rect(lx,ly,47,25)).string_(mic).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.3)),
+			/*			StaticText.new(playControlView,Rect(lx,tty,47,15)).string_("[insig]").font_(Font("Arial",9,true)).stringColor_(Color.hsv(0,0,1)),*/
 
-	mic1LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 10, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(10) ;
+			StaticText.new(playControlView,Rect(tx,ty,47,15)).string_("-80").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playControlView,Rect(tx+50,ty,47,15)).string_("-60").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playControlView,Rect(tx+100,ty,47,15)).string_("-40").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playControlView,Rect(tx+150,ty,47,15)).string_("-20").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playControlView,Rect(tx+175,ty,47,15)).string_("-10").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playControlView,Rect(tx+205,ty,47,15)).string_("0").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+		];
 
-	mic2LevelIndicatorText = StaticText.new(playLevelsView,Rect(8,38,47,15)).string_("mic 2").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1));
-
-	mic2LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 40, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(10) ;
-
+		audioFileLevelIndicator = LevelIndicator(playControlView,Rect(tx+10, ty-20, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+	}.value;
 
 
 
-	micsOSCResponder = OSCFunc({arg msg;
+
+	playLevelsTitleView = UserView(leteControlTab,Rect(2,231,300,29)).background_(Color.hsv(1,0,0.2));
+	playLevelsTitleText = StaticText.new(playLevelsTitleView,Rect(10,3,390,20)).string_("INTERFACE LEVELS").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
+
+	playLevelsView = UserView(leteControlTab,Rect(2,260,300,400)).background_(Color.hsv(1,0,0.3));
+
+	{var tty=18,tx=40,ty=30,lx=8,ly=8,mic="mic 1";
+		mic1LevelIndicatorText = [ StaticText.new(playLevelsView,Rect(lx,ly,47,15)).string_(mic).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1)),
+			StaticText.new(playLevelsView,Rect(lx,tty,47,15)).string_("[insig]").font_(Font("Arial",9,true)).stringColor_(Color.hsv(0,0,1)),
+
+			StaticText.new(playLevelsView,Rect(tx,ty,47,15)).string_("-80").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+50,ty,47,15)).string_("-60").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+100,ty,47,15)).string_("-40").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+150,ty,47,15)).string_("-20").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+175,ty,47,15)).string_("-10").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+205,ty,47,15)).string_("0").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+		]
+	}.value;
+
+	{var tty=58,tx=40,ty=70,lx=8,ly=48,mic="mic 2";
+		mic2LevelIndicatorText = [ StaticText.new(playLevelsView,Rect(lx,ly,47,15)).string_(mic).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1)),
+			StaticText.new(playLevelsView,Rect(lx,tty,47,15)).string_("[insig]").font_(Font("Arial",9,true)).stringColor_(Color.hsv(0,0,1)),
+
+			StaticText.new(playLevelsView,Rect(tx,ty,47,15)).string_("-80").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+50,ty,47,15)).string_("-60").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+100,ty,47,15)).string_("-40").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+150,ty,47,15)).string_("-20").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+175,ty,47,15)).string_("-10").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+			StaticText.new(playLevelsView,Rect(tx+205,ty,47,15)).string_("0").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+		]
+	}.value;
+
+	outLevelMainText = StaticText.new(playLevelsView,Rect(10,100,110,30)).string_("Outputs").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,1));
+
+
+	{var outLevX=10, outLevY=130, levelSep=36, levWidth=20, levHeight=160, textheight=20;
+		var tags;
+
+		tags = ["spk1","spk2","spk3","spk4","spk5","spk6","spk7","spk8"];
+
+		outLevelIndicators = 8.collect({arg i;
+
+			LevelIndicator(playLevelsView,Rect(outLevX+(levelSep*i),outLevY,levWidth,levHeight)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+		});
+
+		outLevelIndicatorTexts =
+		8.collect({arg i;
+			var dBcolor = Color.hsv(0,0,0.7);
+			var dBfont = Font("Courier",8,true);
+
+			[ StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)-(levWidth*0.15),outLevY+levHeight+5,47,textheight)).string_(tags[i]).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1)),
+
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+levHeight-(textheight/2)-2,47,textheight)).string_("-80").font_(dBfont).stringColor_(dBcolor),
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+(levHeight*3/4)-(textheight/2),47,textheight)).string_("-60").font_(dBfont).stringColor_(dBcolor),
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+(levHeight*1/2)-(textheight/2),47,textheight)).string_("-40").font_(dBfont).stringColor_(dBcolor),
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+(levHeight*1/4)-(textheight/2),47,textheight)).string_("-20").font_(dBfont).stringColor_(dBcolor),
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+(levHeight*1/8)-(textheight/2),47,textheight)).string_("-10").font_(dBfont).stringColor_(dBcolor),
+				StaticText.new(playLevelsView,Rect(outLevX+(levelSep*i)+(levWidth)-4,outLevY+(levHeight*0)-(textheight/2),47,textheight)).string_("  0").font_(dBfont).stringColor_(dBcolor),
+				/*
+				StaticText.new(playLevelsView,Rect(tx+50,ty,47,15)).string_("-60").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+				StaticText.new(playLevelsView,Rect(tx+100,ty,47,15)).string_("-40").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+				StaticText.new(playLevelsView,Rect(tx+150,ty,47,15)).string_("-20").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+				StaticText.new(playLevelsView,Rect(tx+175,ty,47,15)).string_("-10").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),
+				StaticText.new(playLevelsView,Rect(tx+205,ty,47,15)).string_("0").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.8)),*/
+			];
+
+		});
+
+
+
+
+	}.value;
+
+
+	mic1LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 10, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
+	/*	mic2LevelIndicatorText = [ StaticText.new(playLevelsView,Rect(8,48,47,15)).string_("mic 2").font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1)),
+	StaticText.new(playLevelsView,Rect(8,58,47,15)).string_("[insig]").font_(Font("Arial",9,true)).stringColor_(Color.hsv(0,0,1))];*/
+
+
+
+	mic2LevelIndicator = LevelIndicator(playLevelsView,Rect(50, 50, 200, 20)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
+
+
+	pitchesOSCResponder = OSCFunc({arg msg;
+		{
+			case
+			{msg[2] == 51}{//onset;
+				"========on".postln;
+				(noteState == 1).if({
+					noteState = 0;
+					acordes = acordes.add(acordeAtual);
+					dinamicas = dinamicas.add(dinamicaAtual);
+					"ac: ".post;
+					acordeAtual.postln;
+					"din: ".post;
+					dinamicaAtual.postln;
+					acordeAtual = [ ];
+					dinamicaAtual = [ ];
+					acordNum = acordNum + 1;
+					"_________off".postln;
+					"------------------------------".postln;
+					thisOnsetPeak = 0;
+				});
+				noteState = 1;
+				thisOnsetPeak = currentPeak;
+
+			}
+			{msg[2] == 52}{
+				currentPeak = msg[3];
+				(((thisOnsetPeak - currentPeak)) > 0.02).if({
+					noteState = 0;
+					acordes = acordes.add(acordeAtual);
+					dinamicas = dinamicas.add(dinamicaAtual);
+					"ac: ".post;
+					acordeAtual.postln;
+					"din: ".post;
+					dinamicaAtual.postln;
+					acordeAtual = [ ];
+					dinamicaAtual = [ ];
+					acordNum = acordNum + 1;
+					"_________off".postln;
+					"------------------------------".postln;
+					thisOnsetPeak = 0;
+				});
+				//				msg.postln;
+
+			}
+			{msg[2] == 50}{var dinamica,nota;
+
+				dinamica = msg[3].round(0.001);
+				nota = msg[6];
+				acordeAtual = checkAndAddNote.(nota,acordeAtual);
+				dinamicaAtual = dinamicaAtual.add(dinamica);
+			}
+
+			;
+
+		}.defer;
+	},'/pitches', s.addr);
+
+
+	levelsOSCResponder = OSCFunc({arg msg;
 		{
 			case
 			{msg[2] == 20}{
@@ -606,15 +853,25 @@
 				mic1LevelIndicator.peakLevel = msg[3].ampdb.lincurve(-120.0,0,-120,6,2.8401812832056).dbamp.round(0.01);*/
 
 
-				mic1LevelIndicator.value = msg[4].ampdb.linlin(-80.0,0,0,1,\min);
+				mic1LevelIndicator.value = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
 				mic1LevelIndicator.peakLevel = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
 			}
 			{msg[2] == 21}{
-				mic2LevelIndicator.value = msg[4].ampdb.linlin(-80.0,0,0,1,\min);
+				mic2LevelIndicator.value = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
 				mic2LevelIndicator.peakLevel = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 22}{
+				audioFileLevelIndicator.value = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
+				audioFileLevelIndicator.peakLevel = msg[3].ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 10}{
+				8.do({arg count;
+					outLevelIndicators[count].value = msg[3+(2*count)].ampdb.linlin(-80.0,0,0,1,\min);
+					outLevelIndicators[count].peakLevel = msg[3+(2*count)].ampdb.linlin(-80.0,0,0,1,\min);
+				});
 			};
 		}.defer;
-	},'/micLevel', s.addr);
+	},'/level', s.addr);
 
 
 
