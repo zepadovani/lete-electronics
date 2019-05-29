@@ -85,7 +85,7 @@
 
 		notesArray.isEmpty.if({
 			notesArray = notesArray.add(midiNote);
-			ampArray = ampArray.add(noteAmp);
+//			ampArray = ampArray.add(noteAmp);
 		},{
 			difs = (notesArray-midiNote).abs;
 			min = difs.minItem;
@@ -93,12 +93,12 @@
 			(min <= thresh).if({var index,oldNoteVal, oldDinVal;
 				index = difs.indexOfEqual(min);
 				oldNoteVal = notesArray[index];
-				oldDinVal = ampArray[index];
+//				oldDinVal = ampArray[index];
 				notesArray[index] = (oldNoteVal + midiNote)/2;
-				ampArray[index] = (oldDinVal+noteAmp)/2; //conferir se essa média faz sentido em sones....
+//				ampArray[index] = (oldDinVal+noteAmp)/2; //conferir se essa média faz sentido em sones....
 			},{
 				notesArray = notesArray.add(midiNote);
-				ampArray = ampArray.add(noteAmp);
+//				ampArray = ampArray.add(noteAmp);
 			});
 		});
 		notesArray.sort;
