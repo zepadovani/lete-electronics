@@ -57,40 +57,62 @@
 
 	var busBFtoDecodeMain,pianoBFBus;
 
-	var checkAndAddNote;
+	var checkAndAddNote, takeMeanOfCloseValuesInList;
 
-	var dinamicas = [ ];
-	var acordes = [ ];
-	var acordeAtual = [ ];
-	var dinamicaAtual = [ ];
+	var currentSoneEnvelope = [ ];
+	var soneEnvelopesArray = [ ];
+
+	var currentChord = [ ];
+	var chordsArray = [ ];
+
+	var currentChordNotesSones = [ ];
+	var chordsSonesArray = [ ];
+
+
+
 	var acordNum = -1;
 	var thisOnsetPeak = 0;
 	var currentPeak = 0;
 	var noteState = 0;
 
+	var threshNotesDetection = 0.5;
+
 
 	playModes = ["Audio File","Live"];
 
-	//função para analisar harmonia de cada trecho
-	checkAndAddNote = {arg n, arr, thresh=0.7;
+	checkAndAddNote = {arg midiNote, notesArray, noteAmp, ampArray, thresh=threshNotesDetection;
 		var difs, min, indmin;
 
-		arr.isEmpty.if({
-			arr = arr.add(n);
+		notesArray.isEmpty.if({
+			notesArray = notesArray.add(midiNote);
+			ampArray = ampArray.add(noteAmp);
 		},{
-			difs = (arr-n).abs;
+			difs = (notesArray-midiNote).abs;
 			min = difs.minItem;
 
-			(min <= thresh).if({var index,oldval;
+			(min <= thresh).if({var index,oldNoteVal, oldDinVal;
 				index = difs.indexOfEqual(min);
-				oldval = arr[index];
-				arr[index] = (oldval+n/2).round(0.01);
+				oldNoteVal = notesArray[index];
+				oldDinVal = ampArray[index];
+				notesArray[index] = (oldNoteVal + midiNote)/2;
+				ampArray[index] = (oldDinVal+noteAmp)/2; //conferir se essa média faz sentido em sones....
 			},{
-				arr = arr.add(n);
+				notesArray = notesArray.add(midiNote);
+				ampArray = ampArray.add(noteAmp);
 			});
 		});
-		arr.sort;
+		notesArray.sort;
 	};
+
+	takeMeanOfCloseValuesInList = {arg list, thresh=threshNotesDetection;
+
+		(list.notNil).if({
+			list.notEmpty.if({
+				list.separate({ arg a, b; (b - a) >= thresh }).collect({arg i; i.mean})
+			})
+		});
+	};
+
 
 
 	playStatusFunction = {
@@ -784,20 +806,21 @@
 
 
 	pitchesOSCResponder = OSCFunc({arg msg;
-		{
+		{var ultimoAcorde = [ ];
 			case
 			{msg[2] == 51}{//onset;
 				"========on".postln;
 				(noteState == 1).if({
+					currentChord.postln;
 					noteState = 0;
-					acordes = acordes.add(acordeAtual);
-					dinamicas = dinamicas.add(dinamicaAtual);
+					chordsArray = chordsArray.add(currentChord);
+					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
 					"ac: ".post;
-					acordeAtual.postln;
+					currentChord.postln;
 					"din: ".post;
-					dinamicaAtual.postln;
-					acordeAtual = [ ];
-					dinamicaAtual = [ ];
+					currentSoneEnvelope.postln;
+					currentChord = [ ];
+					currentSoneEnvelope = [ ];
 					acordNum = acordNum + 1;
 					"_________off".postln;
 					"------------------------------".postln;
@@ -806,19 +829,21 @@
 				noteState = 1;
 				thisOnsetPeak = currentPeak;
 
+
+
 			}
 			{msg[2] == 52}{
 				currentPeak = msg[3];
 				(((thisOnsetPeak - currentPeak)) > 0.02).if({
 					noteState = 0;
-					acordes = acordes.add(acordeAtual);
-					dinamicas = dinamicas.add(dinamicaAtual);
+					chordsArray = chordsArray.add(currentChord);
+					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
 					"ac: ".post;
-					acordeAtual.postln;
+					currentChord.postln;
 					"din: ".post;
-					dinamicaAtual.postln;
-					acordeAtual = [ ];
-					dinamicaAtual = [ ];
+					currentSoneEnvelope.postln;
+					currentChord = [ ];
+					currentSoneEnvelope = [ ];
 					acordNum = acordNum + 1;
 					"_________off".postln;
 					"------------------------------".postln;
@@ -829,10 +854,19 @@
 			}
 			{msg[2] == 50}{var dinamica,nota;
 
-				dinamica = msg[3].round(0.001);
+				dinamica = msg[3];
 				nota = msg[6];
-				acordeAtual = checkAndAddNote.(nota,acordeAtual);
-				dinamicaAtual = dinamicaAtual.add(dinamica);
+
+				currentChord = checkAndAddNote.(nota,currentChord,dinamica,currentChordNotesSones,thresh:threshNotesDetection);
+				currentChord = takeMeanOfCloseValuesInList.(currentChord,threshNotesDetection);
+				currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
+
+				(currentChord != ultimoAcorde).if({
+					currentChord.postln;
+				});
+
+				ultimoAcorde = currentChord;
+
 			}
 
 			;

@@ -80,7 +80,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 		#freq, hasFreq= Tartini.kr(in,0.6,512,k: 64);
 		SendReply.kr(Impulse.kr(50),'/pitches',amp2,52);
 		SendReply.kr(onset,'/pitches',amp,51);
-		SendReply.kr(gate,'/pitches',[amp.round(0.01),meanamp.round(0.01),hasFreq,freq.cpsmidi.round(0.01)],50);
+		SendReply.kr(gate,'/pitches',[amp,meanamp,hasFreq,freq.cpsmidi],50);
 	}
 ).add;
 
