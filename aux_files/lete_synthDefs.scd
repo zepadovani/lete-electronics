@@ -65,23 +65,47 @@ SynthDef(\BFdecoder,
 //pega bem dinamicas escalonada entre 18 e 30, +/-
 //alturas: impreciso quando tem várias notas...
 SynthDef(\noteAnalyzerPolyPitch,
-	{arg pianoStereoInBus,thresh=0.1,time=0.1,trigtime=0.5;
+	{arg pianoStereoInBus,thresh=0.1,timeTrig=0.1,time=0.1,trigtime=0.5,thresh2=0.154,time2=0.05;
 
-		var in,onset,pitches,lastAmp,maxvoices=4, freq, hasFreq;
-		var chain,trig,amp,amp2,meanamp,changedamp,gate,noteAmp;
+		var in,onset,moreonsets, pitches,lastAmp,maxvoices=4, freq, hasFreq;
+		var chain,trig,amp=0,amp2,meanamp,ampGate,trigGate,trigGroupOfNotes,noteAmp;
 		in = Mix.ar(In.ar(pianoStereoInBus,2));
-		chain = FFT(LocalBuf(1024), in);
+		chain = FFT(LocalBuf(512), in);
 		amp2 = PeakFollower.kr(in);
-		amp = Loudness.kr(chain);
-		onset = Onsets.kr(chain,thresh,time);
-		meanamp = MeanTriggered.kr(amp,onset,4);
-		changedamp = Decay.kr(Changed.kr(meanamp),time);
-		gate = Gate.kr(Impulse.kr(50),changedamp);
+
+		moreonsets = Onsets.kr(chain,thresh2,\complex,time2,0.1,mingap: 5);
+//		onset = Onsets.kr(chain,thresh,\complex,time,0.2,mingap: 50);
+		ampGate = (Decay.kr(moreonsets,timeTrig) > 0);//.scope(bufsize: (2**16).asInteger);
+
+		trigGate = Gate.kr(Impulse.kr(50),ampGate);
 		#freq, hasFreq= Tartini.kr(in,0.6,512,k: 64);
 		noteAmp = Amplitude.kr(in,0.05,1).ampdb;
-		SendReply.kr(Impulse.kr(50),'/pitches',amp2,52);
-		SendReply.kr(onset,'/pitches',amp,51);
-		SendReply.kr(gate,'/pitches',[amp,meanamp,hasFreq,freq.cpsmidi,noteAmp],50);
+
+		trigGroupOfNotes = Changed.kr(ampGate);
+
+		//envia [1,noteAmp] quando está dentro de um grupo de notas (gesto)
+		//envia [0,noteAmp] quando gesto acabou
+		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp] ,54);
+		//versão antiga utilizava dois detectores de onset paralelos....
+		//		SendReply.kr(onset,'/pitches',noteAmp,51);//detecta menos onsets (a ideia é que segmente pequenos gestos)
+
+		SendReply.kr(moreonsets,'/pitches',noteAmp,53);//detecta mais onsets (a ideia é que pegue ca. 1 por nota)
+
+
+		//envia série de valores de frequencia enquanto gate de decays de amplitude estiver aberto
+		SendReply.kr(trigGate,'/pitches',[freq.cpsmidi,noteAmp],50);//
+
+		SendReply.kr(Impulse.kr(80),'/pitches',noteAmp,52);//detecta amplitudes continuamente, o que é usado para determinar fim de grandes frases por queda de amplitude
+
+
+
+
+		// testar onsets por nota
+		Out.ar(0,
+			(SinOsc.ar(1660)*EnvGen.ar(Env.perc(0.001,0.05,0.9),moreonsets)!2)
+//			+
+//			(WhiteNoise.ar*EnvGen.ar(Env.perc(0.001,0.05,1),onset)!2)
+		);
 	}
 ).add;
 

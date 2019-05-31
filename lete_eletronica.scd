@@ -65,22 +65,48 @@
 	var currentChordNotesMidi = [ ];
 	var chordNotesMidiArray = [ ];
 
+
+
+
 	var lastChordNotesMidi = [ ];
 
 	var currentChordNotesAmps = [ ];
 	var chordsNotesAmpsArray = [ ];
 
+	var chordsOnsetTime = [ ];
+	var chordsOffsetTime = [ ];
 
+	var currentChordOnsets = [ ];
+	var currentChordOnsetsAmps = [ ];
+	var chordsOnsetsArray = [ ];
+	var chordsOnsetsAmpsArray = [ ];
+
+
+
+
+	var tclock;
 
 	var acordNum = -1;
 	var thisOnsetPeak = 0;
 	var currentPeak = 0;
 	var noteState = 0;
 
+	var offsetAmpThreshdB = 12.0;
 	var threshNotesDetection = 0.333;
 	var threshJoin = 0.5;
 
+	var threshChordOnset = 0.6;
+	var timeChordOnset = 1.2;
+
+	var threshNotesOnset = 0.09;
+	var timeNoteOnset = 0.01;
+
+	var timeThreshMeanAmpGate = 0.08;
+
 	var routinePlayPlings;
+
+	var chordOnFunction, chordOffFunction, whileChordIsOnFuncion;
+
 
 
 	playModes = ["Audio File","Live"];
@@ -616,8 +642,6 @@
 
 
 
-
-
 		}.fork(AppClock);
 
 	};
@@ -636,6 +660,7 @@
 			s.boot;
 
 			s.waitForBoot({
+				tclock = TempoClock.new(1);
 
 				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
 
@@ -665,7 +690,7 @@
 				synthMic1Level = Synth(\leteMic1Level,[\inbus, mic1InterfaceBus],sourceGroup,addAction: \addToHead);
 				synthMic2Level = Synth(\leteMic2Level,[\inbus, mic2InterfaceBus],sourceGroup,addAction: \addToHead);
 
-			audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\thresh,0.06,\time,0.1],mlisteningGroup);
+				audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\timeTrig,timeThreshMeanAmpGate,\thresh,threshChordOnset,\time,timeChordOnset,\thresh2,threshNotesOnset,\time2,timeNoteOnset],mlisteningGroup);
 
 
 
@@ -835,53 +860,164 @@
 
 
 
+
+	routinePlayPlings = Routine.new({
+
+
+
+	});
+
+	chordOnFunction = {
+
+	};
+
+	chordOffFunction = {
+
+	};
+
+	whileChordIsOnFuncion = {
+
+	};
+
+
 	pitchesOSCResponder = OSCFunc({arg msg;
-		{;
+		{
+
+
 			case
-			{msg[2] == 51}{//onset;
-				"||||||||||ONSET!".postln;
-				(noteState == 1).if({
+			{msg[2] == 54}{var thisNoteState, dinamica;
+
+				thisNoteState = msg[3];
+				dinamica = msg[4];
+				{
+				noteState = thisNoteState;
+
+					(noteState == 1).if({//se for onset
+
+					thisOnsetPeak = dinamica;
+					"============================ ONSET!".postln;
+					chordOnFunction.value; //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
+					chordsOnsetTime = chordsOnsetTime.add(tclock.beats.round(0.001));
+					"onsets history: ".post;
+					chordsOnsetTime.postln;
+//					"offsets history: ".post;
+//					chordsOffsetTime.postln;
+
+
+					},
+					//se for offset
+					{
+						"||||||| offset".postln;
+						" ".postln;
+						chordOffFunction.value; //FUNCAO EXECUTADA QUANDO ACORDE TERMINA
+						//						chordsOffsetTime[acordNum] = tclock.beats.round(0.001);
+						chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
+						chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
+						soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
+//						"LAST CHORD: ".postln;
+//						"     => ".post;
+//						[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
+						currentChordNotesMidi = [ ];
+						currentChordNotesAmps = [ ];
+						currentSoneEnvelope = [ ];
+						acordNum = acordNum + 1;
+
+
+					});
+
+
+					//noteState diz se a nota está sustentada ou não....
+					(noteState == 1).if({//caso venha um ataque novo é necessário criar um offset também
+
+//						noteState = 0;
+
+
+					});
+					noteState = 1;
+
+				}.fork;
+
+
+				(msg[3].asInteger == 1).if({
+					"on".postln;},
+				{"   off".postln});
+			}
+/*			{msg[2] == 53}{var dinamica;//onset;
+
+				dinamica = msg[3];
+
+				{
+
+					"========== small_ons:  ".post;
+					dinamica.postln;
+				}.fork;
+
+			}*/
+			{msg[2] == 51}{var dinamica;//onset;
+
+				dinamica = msg[3];
+
+				{
+
+					//noteState diz se a nota está sustentada ou não....
+					(noteState == 1).if({//caso venha um ataque novo é necessário criar um offset também
+
+						noteState = 0;
+//						"------------------------------- off (novo ataque)".postln;
+						chordOffFunction.value; //FUNCAO EXECUTADA QUANDO ACORDE TERMINA
+						//						chordsOffsetTime[acordNum] = tclock.beats.round(0.001);
+						chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
+						chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
+						soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
+//						"LAST CHORD: ".postln;
+//						"     => ".post;
+//						[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
+						currentChordNotesMidi = [ ];
+						currentChordNotesAmps = [ ];
+						currentSoneEnvelope = [ ];
+						acordNum = acordNum + 1;
+					});
+					noteState = 1;
+					thisOnsetPeak = dinamica;
+//					"============================ ONSET!".postln;
+					chordOnFunction.value; //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
+					chordsOnsetTime = chordsOnsetTime.add(tclock.beats.round(0.001));
+//					"onsets history: ".post;
+//					chordsOnsetTime.postln;
+//					"offsets history: ".post;
+//					chordsOffsetTime.postln;
+				}.fork;
+
+			}
+			{msg[2] == 52} { //impulse
+				currentPeak = msg[3];
+				((thisOnsetPeak - currentPeak) > offsetAmpThreshdB).if({
+					//detecta fim de evento sonoro por queda de energia em dB comparada ao momento de ataque
 					noteState = 0;
+					chordOffFunction.value; //FUNCAO EXECUTADA QUANDO ACORDE TERMINA
+					//					chordsOffsetTime[acordNum] = tclock.beats.round(0.001);
+
+
+//					"------------------------------- off energia baixa".postln;
 					chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
 					chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
 					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
-					"LAST CHORD: ".postln;
+					/*					"LAST CHORD: ".postln;
 					"=> ".post;
-					[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
+					[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;*/
 					currentChordNotesMidi = [ ];
-					currentChordNotesAmps = [ ];
 					currentSoneEnvelope = [ ];
 					acordNum = acordNum + 1;
+
 					thisOnsetPeak = -inf;
 				});
-				noteState = 1;
-				thisOnsetPeak = currentPeak;
+				//				msg.postln;
 
 			}
-			/*			{msg[2] == 52}{ //impulse
-			currentPeak = msg[3];
-			(((thisOnsetPeak - currentPeak)) > 0.3).if({
-			noteState = 0;
-			chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
-			soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
-			"ac: ".post;
-			currentChordNotesMidi.postln;
-			"din: ".post;
-			currentSoneEnvelope.postln;
-			currentChordNotesMidi = [ ];
-			currentSoneEnvelope = [ ];
-			acordNum = acordNum + 1;
-			"_________off".postln;
-			"------------------------------".postln;
-			thisOnsetPeak = 0;
-			});
-			//				msg.postln;
+			{msg[2] == 50} {var dinamica,nota,chordDin;
 
-			}*/
-			{msg[2] == 50}{var dinamica,nota,chordDin;
-
-				dinamica = msg[7];
-				nota = msg[6];
+				nota = msg[3];
+				dinamica = msg[4];
 
 				chordDin = checkAndAddNote.(nota,currentChordNotesMidi,dinamica,currentChordNotesAmps,thresh:threshNotesDetection);
 				chordDin = takeMeanOfCloseValuesInList.(chordDin,threshJoin);
@@ -890,15 +1026,16 @@
 
 				currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
 
-				(currentChordNotesMidi.round(0.1) != lastChordNotesMidi).if({
-					[currentChordNotesMidi.round(0.25),currentChordNotesAmps.round(0.1)].flop.postln;
+//				"  ".post;
+				((currentChordNotesMidi.round(0.1) != lastChordNotesMidi)&&(noteState == 1)).if({
+
+					whileChordIsOnFuncion.value; //FUNCAO executada enquanto acorde está ON E DADOS SÃO NOVOS!
+//					[currentChordNotesMidi.round(0.25),currentChordNotesAmps.round(0.1)].flop.postln;
 				});
 
 				lastChordNotesMidi = currentChordNotesMidi.round(0.1);
 
-			}
-
-			;
+			};
 
 		}.defer;
 	},'/pitches', s.addr);
