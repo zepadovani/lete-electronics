@@ -1033,41 +1033,36 @@
 
 
 				{
-				(currentChordNotesMidi.notEmpty && (chordNumber > 2)).if({var gestureOns;
+					(currentChordNotesMidi.notEmpty && (chordNumber > 2)).if({var gestureOns;
 
-					//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
+						//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
 
 
 
-					gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+						gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
 
-					gestureOns = (gestureOns!20).flat.postln;
+						gestureOns = (gestureOns!20).flat.scramble.integrate;
 
-					([currentChordNotesMidi,currentChordNotesAmps].flop).scramble.do({arg midiamp,i;
-						var midi,amp;
+						([currentChordNotesMidi,currentChordNotesAmps].flop!5).flatten(1).scramble.do({arg midiamp,i;
+							var midi,amp;
 
-						midi = midiamp[0];
-						amp = midiamp[1];
+							midi = midiamp[0];
+							amp = midiamp[1];
 
-						{
-/*					gestureOns = (gestureOnsetsArray[chordNumber-2] ++ gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
-
-					gestureOns = (gestureOns!20).flat;*/
-
-								Synth(\oscPings,
-							[
-								\outbusBF, busBFtoDecodeMain,
+							{Synth(\oscPings,
+								[
+									\outbusBF, busBFtoDecodeMain,
 									\freq, (midi).midicps,
-								\azi, rrand(-pi,pi),
-								\rho, rrand(0.3,1.3),
-								\amp, (amp).dbamp,
-								\dur, amp.lincurve(-120,0.0,0.3,10.0,2)
-							],
+									\azi, rrand(-pi,pi),
+									\rho, 1,//rrand(0.3,1.3),
+									\amp, (amp+3).dbamp,
+									\dur, amp.lincurve(-120,0.0,0.3,4.0,4)
+								],
 								sourceGroup);}.defer(gestureOns[i]);
+						});
+
+
 					});
-
-
-				});
 				}.fork;
 
 			}.fork;
