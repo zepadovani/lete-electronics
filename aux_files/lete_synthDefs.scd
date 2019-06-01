@@ -119,6 +119,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0;
 	var sinosc,envgen,bf;
 	sinosc = SinOsc.ar(freq)*amp;
+//	envgen = EnvGen.ar(Env.sine(dur*1/2,dur*1/2),1,amp,doneAction: 2);
 	envgen = EnvGen.ar(Env.perc(att,dur-att,curve: curve),1,amp,doneAction: 2);
 	bf = BFEncode1.ar(sinosc*envgen,azi,el,rho);
 	Out.ar(outbusBF, bf);

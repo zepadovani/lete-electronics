@@ -963,7 +963,7 @@
 				noteState = thisNoteState;
 
 				(noteState == 1).if({//se for onset
-
+					chordNumber = chordNumber + 1;
 
 					currentChordOnsetTime = tclock.beats.round(0.001);
 					thisOnsetPeak = dinamica;
@@ -977,7 +977,7 @@
 					//					"offsets history: ".post;
 					//					chordsOffsetTime.postln;
 
-					chordNumber = chordNumber + 1;
+
 
 					currentChordNotesMidi = [ ];
 					currentChordNotesAmps = [ ];
@@ -1027,37 +1027,49 @@
 				currentGestureOnsetsAmps = currentGestureOnsetsAmps.add(dinamica);
 
 
-				(currentGestureOnsets.size >= 2).if({var
-					waitdurs, numevents;
+				(0.05).wait;
+				//				(currentGestureOnsets - currentChordOnsetTime).postln;
+				//				currentChordNotesMidi.postln;
 
-					waitdurs = currentGestureOnsets.differentiate.copyToEnd(1).scramble;
-					numevents = waitdurs.size;
 
-					numevents.do({arg i;
+				{
+				(currentChordNotesMidi.notEmpty && (chordNumber > 2)).if({var gestureOns;
 
+					//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
+
+
+
+					gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+
+					gestureOns = (gestureOns!20).flat.postln;
+
+					([currentChordNotesMidi,currentChordNotesAmps].flop).scramble.do({arg midiamp,i;
 						var midi,amp;
-						midi = currentChordNotesMidi[i.mod(currentChordNotesMidi.size)];
-						amp = currentChordNotesAmps[i.mod(currentChordNotesAmps.size)].scramble;
 
-						Synth(\oscPings,
+						midi = midiamp[0];
+						amp = midiamp[1];
+
+						{
+/*					gestureOns = (gestureOnsetsArray[chordNumber-2] ++ gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+
+					gestureOns = (gestureOns!20).flat;*/
+
+								Synth(\oscPings,
 							[
 								\outbusBF, busBFtoDecodeMain,
-								\freq, midi.midicps,
+									\freq, (midi).midicps,
 								\azi, rrand(-pi,pi),
 								\rho, rrand(0.3,1.3),
-								\amp, amp.dbamp,
-								\dur, amp.linlin(-120,0,0.6,6)
+								\amp, (amp).dbamp,
+								\dur, amp.lincurve(-120,0.0,0.3,10.0,2)
 							],
-							sourceGroup);
-						waitdurs[i];
+								sourceGroup);}.defer(gestureOns[i]);
 					});
 
+
 				});
+				}.fork;
 
-
-
-				// "========== small_ons:  ".post;
-				// [chordsOnsetTime.size, dinamica].postln;
 			}.fork;
 
 		}
