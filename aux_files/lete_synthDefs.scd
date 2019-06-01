@@ -65,7 +65,7 @@ SynthDef(\BFdecoder,
 //pega bem dinamicas escalonada entre 18 e 30, +/-
 //alturas: impreciso quando tem várias notas...
 SynthDef(\noteAnalyzerPolyPitch,
-	{arg pianoStereoInBus,thresh=0.1,timeTrig=0.1,time=0.1,trigtime=0.5,thresh2=0.154,time2=0.05;
+	{arg pianoStereoInBus,thresh=0.1,timeTrig=0.1,time=0.1,trigtime=0.5,thresh2=0.154,time2=0.05,lowlevthresh = -30;
 
 		var in,onset,moreonsets, pitches,lastAmp,maxvoices=4, freq, hasFreq;
 		var chain,trig,amp=0,amp2,meanamp,ampGate,trigGate,trigGroupOfNotes,noteAmp;
@@ -75,9 +75,9 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 		moreonsets = Onsets.kr(chain,thresh2,\complex,time2,0.1,mingap: 5);
 //		onset = Onsets.kr(chain,thresh,\complex,time,0.2,mingap: 50);
-		ampGate = (Decay.kr(moreonsets,timeTrig) > 0);//.scope(bufsize: (2**16).asInteger);
+		ampGate = (Decay.kr(moreonsets,timeTrig) > lowlevthresh);//.scope(bufsize: (2**16).asInteger);
 
-		trigGate = Gate.kr(Impulse.kr(50),ampGate);
+		trigGate = Gate.kr(Impulse.kr(80),ampGate);
 		#freq, hasFreq= Tartini.kr(in,0.6,512,k: 64);
 		noteAmp = Amplitude.kr(in,0.05,1).ampdb;
 
@@ -85,17 +85,21 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 		//envia [1,noteAmp] quando está dentro de um grupo de notas (gesto)
 		//envia [0,noteAmp] quando gesto acabou
-		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp] ,54);
+		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp] ,100);
+
 		//versão antiga utilizava dois detectores de onset paralelos....
 		//		SendReply.kr(onset,'/pitches',noteAmp,51);//detecta menos onsets (a ideia é que segmente pequenos gestos)
 
-		SendReply.kr(moreonsets,'/pitches',noteAmp,53);//detecta mais onsets (a ideia é que pegue ca. 1 por nota)
+		//detecta mais onsets (a ideia é que pegue ca. 1 por nota)
+		SendReply.kr(moreonsets,'/pitches',noteAmp,101);
 
 
 		//envia série de valores de frequencia enquanto gate de decays de amplitude estiver aberto
-		SendReply.kr(trigGate,'/pitches',[freq.cpsmidi,noteAmp],50);//
+		SendReply.kr(trigGate,'/pitches',[freq.cpsmidi,noteAmp],102);//
 
-		SendReply.kr(Impulse.kr(80),'/pitches',noteAmp,52);//detecta amplitudes continuamente, o que é usado para determinar fim de grandes frases por queda de amplitude
+
+		//não é mais necessário?
+//		SendReply.kr(Impulse.kr(80),'/pitches',noteAmp,52);//detecta amplitudes continuamente, o que é usado para determinar fim de grandes frases por queda de amplitude
 
 
 
