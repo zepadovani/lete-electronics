@@ -1,6 +1,7 @@
 
 (
 ~angles = [ 45, 315, 225, 135]; //FL, FR, BR, BL
+~angles = [ 45, 315];
 ~aziEspaco = ~angles/180 * pi;
 
 {var devices, devChooseWin, saveprefsDic;
@@ -63,7 +64,7 @@
 	var soneEnvelopesArray = [ ];
 
 	var currentChordNotesMidi = [ ];
-	var chordNotesMidiArray = [ ];
+	var chordsNotesMidiArray = [ ];
 
 
 
@@ -87,7 +88,7 @@
 
 	var tclock;
 
-	var acordNum = -1;
+	var chordNumber = -1;
 	var thisOnsetPeak = 0;
 	var currentPeak = 0;
 	var noteState = 0;
@@ -864,13 +865,75 @@
 
 
 
-	routinePlayPlings = Routine.new({
 
-
-
-	});
 
 	chordOnFunction = {
+
+		/*{
+		(chordNumber >= 2).if({var lastOnsetMemory,recentOnsetMemory,waitdurs, amps, midis, numevents;
+
+		(0.01).wait;
+		lastOnsetMemory = chordNumber-2;
+		recentOnsetMemory = chordNumber-1;
+
+		waitdurs = (gestureOnsetsArray.copyRange(lastOnsetMemory,recentOnsetMemory)).flat.differentiate.copyToEnd(1).scramble;
+
+		numevents = waitdurs.size;
+
+		//				("currentChords: " ++ currentChordNotesMidi).postln;
+
+		"waitdurs: ".post; waitdurs.postln;
+		"numevents: ".post; numevents.postln;
+		//						"currentChords: ".currentChordNotesMidi.postln;
+
+		//						midis = chordsNotesMidiArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
+		//						amps = chordsNotesAmpsArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
+		midis = currentChordNotesMidi;
+		amps = currentChordNotesAmps;
+
+
+
+
+
+		//			routinePlayPlings =
+		(Routine.new({
+
+		numevents.do({arg i, notenum, thisNote, thisAmp;
+
+		waitdurs[i].wait;
+
+
+		notenum = i.mod(midis.size);
+		thisNote = midis[notenum];
+		thisAmp = amps[notenum];
+
+		"nota: ".post; thisNote.postln;
+
+
+
+
+		Synth(\oscPings,
+		[
+		\outbusBF, busBFtoDecodeMain,
+		\freq,thisNote.midicps,
+		\azi,rrand(-pi,pi),
+		\rho,rrand(0.3,1.3),
+		\amp, thisAmp.dbamp,
+		\dur, waitdurs[i]*4
+		],
+		sourceGroup);
+
+		});
+
+
+
+
+		}).play;)
+
+
+
+		})
+		}.fork;*/
 
 	};
 
@@ -884,114 +947,151 @@
 
 
 	pitchesOSCResponder = OSCFunc({arg msg;
-		{
 
 
-			case
-			{msg[2] == 100}{var thisNoteState, dinamica;
 
-				thisNoteState = msg[3];
-				dinamica = msg[4];
+		case
 
+		{msg[2] == 100}{var thisNoteState, dinamica;
+
+			thisNoteState = msg[3];
+			dinamica = msg[4];
+
+			{
+
+
+				noteState = thisNoteState;
+
+				(noteState == 1).if({//se for onset
+
+
+					currentChordOnsetTime = tclock.beats.round(0.001);
+					thisOnsetPeak = dinamica;
+					"=== ON:  ".post;
+					chordNumber.postln;
+					chordOnFunction.value; //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
+					chordsOnsetTime = chordsOnsetTime.add(currentChordOnsetTime);
+					//						currentGestureOnsets = currentGestureOnsets.add(currentChordOnsetTime);
+					/*						"onsets history: ".post;
+					chordsOnsetTime.postln;*/
+					//					"offsets history: ".post;
+					//					chordsOffsetTime.postln;
+
+					chordNumber = chordNumber + 1;
+
+					currentChordNotesMidi = [ ];
+					currentChordNotesAmps = [ ];
+					currentSoneEnvelope = [ ];
+					currentGestureOnsets = [ ];
+					currentGestureOnsetsAmps = [ ];
+				},
+				//se for offset
 				{
+					"=== OFF".postln;
+					//						" ".postln;
+					chordOffFunction.value; //FUNCAO EXECUTADA QUANDO ACORDE TERMINA
 
+					chordsNotesMidiArray = chordsNotesMidiArray.add(currentChordNotesMidi);
+					chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
+					soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
+					gestureOnsetsArray = gestureOnsetsArray.add(currentGestureOnsets);
+					gestureOnsetsAmpsArray = gestureOnsetsAmpsArray.add(currentGestureOnsetsAmps);
 
-					noteState = thisNoteState;
+					/*						"gesto ons: ".post;
+					(gestureOnsetsArray.last - currentChordOnsetTime).round(0.001).postln;*/
 
-					(noteState == 1).if({//se for onset
-						currentChordOnsetTime = tclock.beats.round(0.001);
-						thisOnsetPeak = dinamica;
-						"=== ON".postln;
-						chordOnFunction.value; //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
-						chordsOnsetTime = chordsOnsetTime.add(currentChordOnsetTime);
-//						currentGestureOnsets = currentGestureOnsets.add(currentChordOnsetTime);
-						"onsets history: ".post;
-						chordsOnsetTime.postln;
-						//					"offsets history: ".post;
-						//					chordsOffsetTime.postln;
-
-
-					},
-					//se for offset
-					{
-						"=== OFF".postln;
-						" ".postln;
-						chordOffFunction.value; //FUNCAO EXECUTADA QUANDO ACORDE TERMINA
-						//						chordsOffsetTime[acordNum] = tclock.beats.round(0.001);
-						chordNotesMidiArray = chordNotesMidiArray.add(currentChordNotesMidi);
-						chordsNotesAmpsArray = chordsNotesAmpsArray.add(currentChordNotesAmps);
-						soneEnvelopesArray = soneEnvelopesArray.add(currentSoneEnvelope);
-						gestureOnsetsArray = gestureOnsetsArray.add(currentGestureOnsets);
-						gestureOnsetsAmpsArray = gestureOnsetsAmpsArray.add(currentGestureOnsetsAmps);
-
-						"gesto ons: ".post;
-						(gestureOnsetsArray.last - currentChordOnsetTime).round(0.001).postln;
-
-						//						"LAST CHORD: ".postln;
-						//						"     => ".post;
-						//						[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
-						currentChordNotesMidi = [ ];
-						currentChordNotesAmps = [ ];
-						currentSoneEnvelope = [ ];
-						currentGestureOnsets = [ ];
-						currentGestureOnsetsAmps = [ ];
-						acordNum = acordNum + 1;
-
-						thisOnsetPeak = -inf;
-					});
-
-
-				}.fork;
+					//						"LAST CHORD: ".postln;
+					//						"     => ".post;
+					//						[currentChordNotesMidi.round(0.125),currentChordNotesAmps.round(0.1)].flop.postln;
 
 
 
-			}
-			{msg[2] == 101}{var dinamica;//onset;
-
-				dinamica = msg[3];
-
-
-				{
-					currentGestureOnsetTime = tclock.beats.round(0.001);
-
-					currentGestureOnsets = currentGestureOnsets.add(currentGestureOnsetTime);
-					currentGestureOnsetsAmps = currentGestureOnsetsAmps.add(dinamica);
-
-					//					chordsOnsetTime = chordsOnsetTime.add(tclock.beats.round(0.001));
-					"========== small_ons:  ".post;
-					[chordsOnsetTime.size, dinamica].postln;
-				}.fork;
-
-			}
-			{msg[2] == 102} {var dinamica,nota,chordDin;
-
-				nota = msg[3];
-				dinamica = msg[4];
-
-				chordDin = checkAndAddNote.(nota,currentChordNotesMidi,dinamica,currentChordNotesAmps,thresh:threshNotesDetection);
-				chordDin = takeMeanOfCloseValuesInList.(chordDin,threshJoin);
-				currentChordNotesMidi = chordDin[0]; //alturas processadas
-				currentChordNotesAmps = chordDin[1]; //respectivas dinamicas
-
-				currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
-
-
-				((currentChordNotesMidi.round(0.1) != lastChordNotesMidi.round(0.1))&&(noteState == 1)).if({
-
-					whileChordIsOnFuncion.value; //FUNCAO executada enquanto acorde está ON E DADOS SÃO NOVOS!
-
-					//					(currentChordNotesAmps.round(0.01).mean	> -28).if({
-					//				"  ".post;
-
-					[currentChordNotesMidi.round(0.01),currentChordNotesAmps.round(0.01)].flop.postln;
-					//					},{"jumped".postln});
+					thisOnsetPeak = -inf;
 				});
 
-				lastChordNotesMidi = currentChordNotesMidi.round(0.1);
 
-			};
+			}.fork;
 
-		}.defer;
+
+
+		}
+		{msg[2] == 101}{var dinamica;//onset;
+
+			dinamica = msg[3];
+
+
+			{
+				currentGestureOnsetTime = tclock.beats.round(0.001);
+
+				currentGestureOnsets = currentGestureOnsets.add(currentGestureOnsetTime);
+				currentGestureOnsetsAmps = currentGestureOnsetsAmps.add(dinamica);
+
+
+				(currentGestureOnsets.size >= 2).if({var
+					waitdurs, numevents;
+
+					waitdurs = currentGestureOnsets.differentiate.copyToEnd(1).scramble;
+					numevents = waitdurs.size;
+
+					numevents.do({arg i;
+
+						var midi,amp;
+						midi = currentChordNotesMidi[i.mod(currentChordNotesMidi.size)];
+						amp = currentChordNotesAmps[i.mod(currentChordNotesAmps.size)].scramble;
+
+						Synth(\oscPings,
+							[
+								\outbusBF, busBFtoDecodeMain,
+								\freq, midi.midicps,
+								\azi, rrand(-pi,pi),
+								\rho, rrand(0.3,1.3),
+								\amp, amp.dbamp,
+								\dur, amp.linlin(-120,0,0.6,6)
+							],
+							sourceGroup);
+						waitdurs[i];
+					});
+
+				});
+
+
+
+				// "========== small_ons:  ".post;
+				// [chordsOnsetTime.size, dinamica].postln;
+			}.fork;
+
+		}
+		{msg[2] == 102} {var dinamica,nota,chordDin;
+			//			msg.postln;
+			nota = msg[3];
+			dinamica = msg[4];
+
+			lastChordNotesMidi = currentChordNotesMidi.round(0.1);
+
+			chordDin = checkAndAddNote.(nota,currentChordNotesMidi,dinamica,currentChordNotesAmps,thresh:threshNotesDetection);
+			chordDin = takeMeanOfCloseValuesInList.(chordDin,threshJoin);
+			currentChordNotesMidi = chordDin[0]; //alturas processadas
+			currentChordNotesAmps = chordDin[1]; //respectivas dinamicas
+
+
+			/*		(currentChordNotesMidi.round(0.25) != lastChordNotesMidi.round(0.25)).if({
+
+			});*/
+
+
+			//			currentChordNotesMidi.postln;
+
+			currentSoneEnvelope = currentSoneEnvelope.add(dinamica);
+
+			//			("currentChordsNotesMidi: " ++ currentChordNotesMidi).postln;
+
+
+
+
+		}
+		;
+
+
 	},'/pitches', s.addr);
 
 

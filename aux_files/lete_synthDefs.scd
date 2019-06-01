@@ -83,6 +83,8 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 		trigGroupOfNotes = Changed.kr(ampGate);
 
+
+
 		//envia [1,noteAmp] quando está dentro de um grupo de notas (gesto)
 		//envia [0,noteAmp] quando gesto acabou
 		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp] ,100);
@@ -105,11 +107,11 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 
 		// testar onsets por nota
-		Out.ar(0,
+/*		Out.ar(0,
 			(SinOsc.ar(1660)*EnvGen.ar(Env.perc(0.001,0.05,0.9),moreonsets)!2)
 //			+
 //			(WhiteNoise.ar*EnvGen.ar(Env.perc(0.001,0.05,1),onset)!2)
-		);
+		);*/
 	}
 ).add;
 
@@ -117,7 +119,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0;
 	var sinosc,envgen,bf;
 	sinosc = SinOsc.ar(freq)*amp;
-	envgen = EnvGen.ar(Env.perc(att,dur-att,level: curve),1,amp,doneAction: 2);
+	envgen = EnvGen.ar(Env.perc(att,dur-att,curve: curve),1,amp,doneAction: 2);
 	bf = BFEncode1.ar(sinosc*envgen,azi,el,rho);
 	Out.ar(outbusBF, bf);
 	}

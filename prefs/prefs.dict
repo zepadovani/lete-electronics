@@ -11,7 +11,7 @@
 	'mic1', "0",
 	'sp6', "-135",
 	'memSize', "17",
-	'outDev', "Built-in Output",
+	'outDev', "JBL Reflect Mini2",
 	'playMode', "Audio File",
 	'inDev', "Built-in Microph",
 	'sp0', "-45",
