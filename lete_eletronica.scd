@@ -1,8 +1,7 @@
 
+
 (
-~angles = [ 45, 315, 225, 135]; //FL, FR, BR, BL
-~angles = [ 45, 315];
-~aziEspaco = ~angles/180 * pi;
+
 
 {var devices, devChooseWin, saveprefsDic;
 	var devicesIn, devicesOut, deviceIn, deviceOut;
@@ -14,7 +13,7 @@
 	var savePrefsButton;
 	var interfaceInChoose, interfaceOutChoose;
 	var spAngles, serverMemSizePower;
-	var memFactChoose, decodeSelected;
+	var memFactChoose, decodeSelected, decodeSelectedText;
 	var defDiscl;
 	//	var letePrefsTab;
 	var devView, devSetup, interfView;
@@ -111,6 +110,10 @@
 
 	var chordOnFunction, chordOffFunction, whileChordIsOnFuncion;
 
+	var decodeAngles;
+
+
+	currentEnvironment.clear;
 
 
 	playModes = ["Audio File","Live"];
@@ -221,13 +224,30 @@
 	deviceOut = ~letePrefs.at(\outDev);
 	mic1BusSetup = ~letePrefs.at(\mic1);
 	mic2BusSetup = ~letePrefs.at(\mic2);
+	decodeSelected = ~letePrefs.at(\decodeSetup);
 
 	playMode = ~letePrefs.at(\playMode);
+
 	spAngles = 8.collect({arg i;
 		var dictsyms;
 		dictsyms = [\sp0,\sp1,\sp2,\sp3,\sp4,\sp5,\sp6,\sp7];
 		~letePrefs.at(dictsyms[i]).asInteger;
 	});
+
+
+
+	decodeAngles = case
+	{decodeSelected == "stereo"}{spAngles.copyFromStart(1)}
+	{decodeSelected == "quadra"}{spAngles.copyFromStart(3)}
+	{decodeSelected == "hexa"}{spAngles.copyFromStart(5)}
+	{decodeSelected == "octa"}{spAngles.copyFromStart(7)};
+
+
+
+	~aziEspaco = decodeAngles/180 * pi;
+
+	("aziEspaco = " ++ ~aziEspaco).postln;
+
 
 	serverMemSizePower = ~letePrefs.at(\memSize);
 	s.options.memSize = 2 ** (serverMemSizePower.asInteger);
@@ -238,7 +258,8 @@
 	letePrefsTab = leteTabbedView.views[1].background_(Color.hsv(0.35,0,0.8,1));
 	leteControlTab = leteTabbedView.views[0].background_(Color.hsv(0.35,0,0.5,1));
 	prefFile = "prefs.dict";
-	decodeSelected = ~letePrefs.at(\decodeSetup);
+
+
 
 
 	leteTitleView = UserView(leteMainWindow,Rect(0,0,1100,40)).background_(Color.hsv(1,0,0.2));
@@ -412,7 +433,7 @@
 
 	decodeSetupStatic = StaticText.new(decButtonsView,Rect(10,6,90,25)).string_("Output setup: ");
 
-	decodeSelected = StaticText.new(decButtonsView,Rect(30,30,90,25)).string_(decodeSelected).stringColor_(Color.hsv(0,1,0.8)).font_(Font("Arial",25,true));
+	decodeSelectedText = StaticText.new(decButtonsView,Rect(30,30,90,25)).string_(decodeSelected).stringColor_(Color.hsv(0,1,0.8)).font_(Font("Arial",25,true));
 
 
 	stereoButton = Button(decButtonsView,Rect(10,70,100,30))
@@ -421,7 +442,8 @@
 	]).action_({
 		{var decVal = "stereo";
 			~letePrefs.put(\decodeSetup,decVal);
-			decodeSelected.string = decVal;
+			decodeSelectedText.string = decVal;
+			decodeSelected = decVal;
 			refreshAnglesFunction.(decVal);
 		}.fork(AppClock);
 	});
@@ -432,7 +454,8 @@
 	]).action_({
 		{var decVal = "quadra";
 			~letePrefs.put(\decodeSetup,decVal);
-			decodeSelected.string = decVal;
+			decodeSelectedText.string = decVal;
+			decodeSelected = decVal;
 			refreshAnglesFunction.(decVal);
 		}.fork(AppClock);
 	});
@@ -443,7 +466,8 @@
 	]).action_({
 		{var decVal = "hexa";
 			~letePrefs.put(\decodeSetup,decVal);
-			decodeSelected.string = decVal;
+			decodeSelectedText.string = decVal;
+			decodeSelected = decVal;
 			refreshAnglesFunction.(decVal);
 		}.fork(AppClock);
 	});
@@ -454,7 +478,8 @@
 	]).action_({
 		{var decVal = "octa";
 			~letePrefs.put(\decodeSetup,decVal);
-			decodeSelected.string = decVal;
+			decodeSelectedText.string = decVal;
+			decodeSelected = decVal;
 			refreshAnglesFunction.(decVal);
 		}.fork(AppClock);
 	});
@@ -552,6 +577,30 @@
 					i.visible = false;
 				})
 			});
+
+
+
+			spAngles = 8.collect({arg i;
+				var dictsyms;
+				dictsyms = [\sp0,\sp1,\sp2,\sp3,\sp4,\sp5,\sp6,\sp7];
+				~letePrefs.at(dictsyms[i]).asInteger.postln;
+			});
+
+
+			decodeAngles = case
+			{decodeSelected == "stereo"}{spAngles.copyFromStart(1)}
+			{decodeSelected == "quadra"}{spAngles.copyFromStart(3)}
+			{decodeSelected == "hexa"}{spAngles.copyFromStart(5)}
+			{decodeSelected == "octa"}{spAngles.copyFromStart(7)};
+
+
+			~aziEspaco = decodeAngles/180 * pi;
+
+			("decodeSelected = " ++ decodeSelected).postln;
+			("decodeAngles = " ++ decodeAngles).postln;
+			("aziEspaco = " ++ ~aziEspaco).postln;
+
+
 		}.fork(AppClock);
 	};
 
@@ -574,7 +623,8 @@
 		}.fork(AppClock);
 	});
 
-	refreshAnglesFunction.(decodeSelected.string);
+	refreshAnglesFunction.(decodeSelectedText.string);
+
 
 
 	savePrefsButton = Button(prefFileView,Rect(280,10,200,25))
@@ -586,6 +636,7 @@
 			(0.1).wait;
 			saveprefsDic.value(prefFile);
 			"Preferences saved to prefs/" ++ prefFile ++ " file.\nValues will be used automatically when the parent file is run again.".postln;
+
 		}.fork(AppClock);
 	});
 

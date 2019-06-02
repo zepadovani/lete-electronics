@@ -14,8 +14,8 @@
 	'outDev', "JBL Reflect Mini2",
 	'playMode', "Audio File",
 	'inDev', "Built-in Microph",
-	'sp0', "-45",
+	'sp0', "45",
+	'sp1', "-45",
 	'mic2', "1",
-	'sp1', "45",
-	'sp2', "-135",
+	'sp2', "135",
 ];)

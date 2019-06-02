@@ -40,7 +40,6 @@ SynthDef(\routeStereoToBF, {arg inbus,outbus,azi=0,rho=1,el=0,width= 1.570796326
 SynthDef(\BFdecoder,
 	{arg ambInbus, outBus=0, amp=1.0;
 		var w,x,y,z,decode;
-
 		#w,x,y,z = In.ar(ambInbus,4);
 		decode = BFDecode1.ar(w,x,y,z, ~aziEspaco);
 		Out.ar(outBus,decode);
