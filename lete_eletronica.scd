@@ -65,7 +65,7 @@
 	var currentChordNotesMidi = [ ];
 	var chordsNotesMidiArray = [ ];
 
-
+	var grainEnvBuf;
 
 
 	var lastChordNotesMidi = [ ];
@@ -664,8 +664,6 @@
 		}.fork(AppClock);*/
 	});
 
-	this.executeFile(Document.current.dir +/+ "aux_files/lete_synthDefs.scd");
-
 	s.serverIsRunning.if({
 		leteMainWindow.background_(Color.hsv(0.35,0.2,0.8,1));
 		leteTitleView.background_(Color.hsv(0,0.5,0.35));
@@ -712,12 +710,16 @@
 		{
 			leteMainWindow.background_(Color.hsv(0.35,0.2,0.8,1));
 			leteTitleView.background_(Color.hsv(0,0.5,0.35));
+
+			this.executeFile(Document.current.dir +/+ "aux_files/lete_synthDefs.scd");
 			s.boot;
 
 			s.waitForBoot({
 				tclock = TempoClock.new(1);
 
 				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
+
+				grainEnvBuf = Env([0, 1, 0], [0.5, 0.5], [2, -2]).asSignal(1024);
 
 				mic1InterfaceBus = Bus.new('audio',mic1BusSetup.asInteger + numDeviceInputs,1,s);
 				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1,s);
@@ -1084,17 +1086,25 @@
 
 
 				{
-					(currentChordNotesMidi.notEmpty && (chordNumber > 2)).if({var gestureOns;
+					(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61;
 
 						//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
 
 
+						(currentGestureOnsets.size <= 2).if({
 
-						gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+							gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+						},
+						{
+							gestureOns = currentGestureOnsets.differentiate.copyToEnd(1);
+						});
 
-						gestureOns = (gestureOns!20).flat.scramble.integrate;
 
-						([currentChordNotesMidi,currentChordNotesAmps].flop!5).flatten(1).scramble.do({arg midiamp,i;
+/*						gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);*/
+
+						gestureOns = (gestureOns!20).flat.integrate;
+
+						([currentChordNotesMidi,currentChordNotesAmps].flop!2).flatten(1).scramble.do({arg midiamp,i;
 							var midi,amp;
 
 							midi = midiamp[0];
@@ -1104,13 +1114,21 @@
 								[
 									\outbusBF, busBFtoDecodeMain,
 									\freq, (midi).midicps,
+									\freqmod, lastFreq.midicps,
 									\azi, rrand(-pi,pi),
 									\rho, 1,//rrand(0.3,1.3),
-									\amp, (amp+3).dbamp,
-									\dur, amp.lincurve(-120,0.0,0.3,4.0,4)
+									\amp, (amp-9).dbamp,
+									\dur, amp.lincurve(-120,0.0,1,4.0,4),
+									\envbuf, grainEnvBuf,
+									\modind, rrand((midi).midicps*0.1,(midi).midicps*0.95),
+									\bwr,0.001
 								],
 								sourceGroup);}.defer(gestureOns[i]);
+
+							lastFreq = midi;
 						});
+
+
 
 
 					});

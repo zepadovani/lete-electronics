@@ -42,7 +42,7 @@ SynthDef(\BFdecoder,
 		var w,x,y,z,decode;
 		#w,x,y,z = In.ar(ambInbus,4);
 		decode = BFDecode1.ar(w,x,y,z, ~aziEspaco);
-		Out.ar(outBus,decode);
+		Out.ar(outBus,Limiter.ar(decode,0.9999));
 	}
 ).add;
 
@@ -115,11 +115,15 @@ SynthDef(\noteAnalyzerPolyPitch,
 ).add;
 
 
-SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0;
-	var sinosc,envgen,bf;
-	sinosc = SinOsc.ar(freq)*amp;
+SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0,bwr=0.01,freqmod,modind=100,envbuf;
+	var sinosc,envgen,bf,dens;
+//	sinosc = SinOsc.ar(freq)*amp;
+//	sinosc = Resonz.ar(WhiteNoise.ar,freq,bwr)*SinOsc.ar(Rand(0.1,12));
 //	envgen = EnvGen.ar(Env.sine(dur*1/2,dur*1/2),1,amp,doneAction: 2);
 	envgen = EnvGen.ar(Env.perc(att,dur-att,curve: curve),1,amp,doneAction: 2);
+//	dens = envgen*2;
+//	sinosc = FMGrainB.ar(Impulse.ar(dens),(1/dens),freq,freqmod,envbuf: envbuf);
+	sinosc = SinOsc.ar(freq+(SinOsc.ar(freqmod)*modind));
 	bf = BFEncode1.ar(sinosc*envgen,azi,el,rho);
 	Out.ar(outbusBF, bf);
 	}
