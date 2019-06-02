@@ -1086,7 +1086,7 @@
 
 
 				{
-					(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61;
+					(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61, midiAmpEvents, rep, notedur;
 
 						//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
 
@@ -1104,6 +1104,12 @@
 
 						gestureOns = (gestureOns!20).flat.integrate;
 
+						midiAmpEvents = [currentChordNotesMidi,currentChordNotesAmps].flop;
+
+						rep = (currentChordNotesAmps.size < 4).if({3},{1});
+
+						notedur = currentChordNotesAmps.size.linlin(0,100,4,0.1);
+
 						([currentChordNotesMidi,currentChordNotesAmps].flop!2).flatten(1).scramble.do({arg midiamp,i;
 							var midi,amp;
 
@@ -1117,8 +1123,8 @@
 									\freqmod, lastFreq.midicps,
 									\azi, rrand(-pi,pi),
 									\rho, 1,//rrand(0.3,1.3),
-									\amp, (amp-9).dbamp,
-									\dur, amp.lincurve(-120,0.0,1,4.0,4),
+									\amp, (amp).dbamp,
+									\dur, notedur,//amp.lincurve(-120,0.0,1,4.0,4),
 									\envbuf, grainEnvBuf,
 									\modind, rrand((midi).midicps*0.1,(midi).midicps*0.95),
 									\bwr,0.001
