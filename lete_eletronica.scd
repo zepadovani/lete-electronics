@@ -23,7 +23,7 @@
 	var spAngView, angleAdjust, speakersAnglesIn;
 	var saveTitView, savText;
 	var serverBootView, serverBootTitleView, serverBootTitle, serverBootButton, serverState;
-	var playAudioFileRoutine, stopAudioFileRoutine, playAudioFileSynth;
+	var playAudioFileRoutine, stopAudioFileRoutine, playAudioFileSynth, liveRecSynth;
 	var routeAudioFileToBFSynth,routeAudioFileToBFSynth2;
 	var runStartServerRoutine, runStopServerRoutine;
 	var playModes, playMode;
@@ -32,7 +32,7 @@
 	var leteTitleView, leteTitleText, leteTitleText2, leteTitleText3;
 	var playControlTitleView, playControlTitleText, playControlView;
 	var playLevelsTitleView, playLevelsTitleText, playLevelsView;
-	var playFileButton;
+	var playFileButton, mainControlButton;
 
 	var playModeMenu, playStatusTextTitle, playStatusText;
 	var lastEventNumber = 100;
@@ -43,7 +43,7 @@
 	var levelsOSCResponder;
 	var numDeviceInputs = 16;
 	var numDeviceOutputs = 16;
-	var audioFileBuffer;
+	var audioFileBuffer,liveBuffer;
 	var outLevelMainText, outLevelIndicatorTexts, outLevelIndicators;
 
 	var mic1InterfaceBus, mic2InterfaceBus;
@@ -85,7 +85,7 @@
 	var currentGestureOnsetTime = 0;
 
 
-	var tclock;
+	var tclock, chronoText,chronoTextSMPTE;
 
 	var chordNumber = -1;
 	var thisOnsetPeak = 0;
@@ -111,6 +111,7 @@
 	var chordOnFunction, chordOffFunction, whileChordIsOnFuncion;
 
 	var decodeAngles;
+	var secondsFromBeginning = 0;
 
 
 	currentEnvironment.clear;
@@ -175,12 +176,12 @@
 	playStatusFunction = {
 		case
 		{(playCount < 0)}{"not ready"}
-		{(playCount == 0)}{"ready"}
+		{(playCount == 0)}{"ready to run"}
 		{(playCount > 0)&&(playCount <= lastEventNumber)}{"running"}
 		{(playCount > lastEventNumber)}{"ended"};
 	};
 
-	//Configuração geral do servidor:
+	//Conguração geral do servidor:
 	s = Server.local;
 
 	~letePrefs = Dictionary.new;
@@ -707,7 +708,10 @@
 	};
 
 	runStartServerRoutine = {
-		{
+		{var cond;
+
+			cond = Condition.new;
+
 			leteMainWindow.background_(Color.hsv(0.35,0.2,0.8,1));
 			leteTitleView.background_(Color.hsv(0,0.5,0.35));
 
@@ -715,9 +719,10 @@
 			s.boot;
 
 			s.waitForBoot({
-				tclock = TempoClock.new(1);
 
 				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
+
+				liveBuffer = Buffer.alloc(s, s.sampleRate * (10 * 60), 2);
 
 				grainEnvBuf = Env([0, 1, 0], [0.5, 0.5], [2, -2]).asSignal(1024);
 
@@ -749,7 +754,76 @@
 
 				audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\timeTrig,timeThreshMeanAmpGate,\thresh,threshChordOnset,\time,timeChordOnset,\thresh2,threshNotesOnset,\time2,timeNoteOnset,\lowlevthresh,lowLevelThresh],mlisteningGroup);
 
+				s.sync(cond);
 
+
+				playFileButton = Button(playControlView, Rect(150,150,130,30))	.states_([
+					["Play Audio File", Color.hsv(0.35,0.4,0.9), Color.hsv(0,0,0.6)],
+					["Stop Audio File", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
+				]).action_({arg i;
+					var valor;
+					valor = i.value;
+
+					(valor == 1).if(
+						{playAudioFileRoutine.value;},
+						{stopAudioFileRoutine.value;
+					});
+
+					/*		{
+					}.fork(AppClock);*/
+				});
+
+
+				playCount = 0;
+
+				playStatusText.string = playStatusFunction.value;
+
+				mainControlButton = Button(playControlView, Rect(60,20,150,30))	.states_([
+					["Start Electronics", Color.hsv(0.35,0.4,0.2), Color.hsv(0,0,0.7)],
+					["Stop Electronics", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
+				]).action_({arg i;
+					var valor;
+					valor = i.value;
+
+					(valor == 1).if(
+						{
+
+				playCount = 1;
+
+				playStatusText.string = playStatusFunction.value;
+
+							{
+								tclock = TempoClock.new(1);
+
+								liveRecSynth = Synth(\rec2ch, [\inbus, pianoStereoBus, \buf, liveBuffer], postDecodeGroup);
+								{
+									inf.do({
+										secondsFromBeginning = tclock.beats;
+										chronoText.string_(
+											(secondsFromBeginning/60).floor.asInteger.asSizedString ++ ":" ++
+											(secondsFromBeginning%60).floor.asInteger.asSizedString
+
+										);
+
+										(1).wait;
+									});
+								}.fork(AppClock);
+
+
+
+							}.fork(AppClock);
+
+
+							//				x.toString.copyToEnd(3);
+						},
+						{
+							//funcstate0
+
+					});
+
+					/*		{
+					}.fork(AppClock);*/
+				});
 
 
 			});
@@ -770,11 +844,20 @@
 
 	playControlView = UserView(leteControlTab,Rect(2,31,300,400)).background_(Color.hsv(1,0,0.7));
 
+	chronoTextSMPTE = SMPTE.new(0,25);
+	chronoTextSMPTE.seconds(secondsFromBeginning);
+
+
+	chronoText = StaticText.new(playControlView,Rect(30,70,390,20)).string_((secondsFromBeginning/60).floor.asInteger.asSizedString ++ ":" ++
+		(secondsFromBeginning%60).floor.asInteger.asSizedString).font_(Font("Arial",26,true)).stringColor_(Color.hsv(0.3,0.9,0.4));
+
+
+
 
 
 	playModeMenu = EZPopUpMenu.new(
 		playControlView,
-		Rect(5,5,130,35),
+		Rect(5,148,130,35),
 		"mode",
 		[
 			"Audio File" -> {arg item;
@@ -796,26 +879,14 @@
 
 	playStatusTextTitle = StaticText.new(playControlView,Rect(10,110,390,20)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
 
-	playStatusText = StaticText.new(playControlView,Rect(170,108,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
-
-	playFileButton = Button(playControlView, Rect(150,5,130,30))	.states_([
-		["Play Audio File", Color.hsv(0.35,0.4,0.9), Color.hsv(0,0,0.6)],
-		["Stop Audio File", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
-	]).action_({arg i;
-		var valor;
-		valor = i.value;
-
-		(valor == 1).if(
-			{playAudioFileRoutine.value;},
-			{stopAudioFileRoutine.value;
-		});
-
-		/*		{
-		}.fork(AppClock);*/
-	});
+	playStatusText = StaticText.new(playControlView,Rect(170,110,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
 
 
-	{var tty=48,tx=40,ty=60,lx=8,ly=35,mic="audio file";
+
+
+
+	//	 tty=48,tx=40,ty=60,lx=8,ly=35,mic="audio file";
+	{var dy=180,tty=28+dy,tx=40,ty=40+dy,lx=8,ly=15+dy,mic="audio file";
 		audioFileLevelIndicatorText = [ StaticText.new(playControlView,Rect(lx,ly,47,25)).string_(mic).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,0.3)),
 			/*			StaticText.new(playControlView,Rect(lx,tty,47,15)).string_("[insig]").font_(Font("Arial",9,true)).stringColor_(Color.hsv(0,0,1)),*/
 
@@ -833,10 +904,10 @@
 
 
 
-	playLevelsTitleView = UserView(leteControlTab,Rect(2,231,300,29)).background_(Color.hsv(1,0,0.2));
+	playLevelsTitleView = UserView(leteControlTab,Rect(2,270,300,29)).background_(Color.hsv(1,0,0.2));
 	playLevelsTitleText = StaticText.new(playLevelsTitleView,Rect(10,3,390,20)).string_("INTERFACE LEVELS").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
 
-	playLevelsView = UserView(leteControlTab,Rect(2,260,300,400)).background_(Color.hsv(1,0,0.3));
+	playLevelsView = UserView(leteControlTab,Rect(2,299,300,400)).background_(Color.hsv(1,0,0.3));
 
 	{var tty=18,tx=40,ty=30,lx=8,ly=8,mic="mic 1";
 		mic1LevelIndicatorText = [ StaticText.new(playLevelsView,Rect(lx,ly,47,15)).string_(mic).font_(Font("Arial",11,true)).stringColor_(Color.hsv(0,0,1)),
@@ -919,83 +990,297 @@
 
 
 
+	//ações realizadas a cada onset
+	chordOnFunction = {arg thisNoteState, dinamica, freq;
 
-	chordOnFunction = {
 
-		/*{
-		(chordNumber >= 2).if({var lastOnsetMemory,recentOnsetMemory,waitdurs, amps, midis, numevents;
+		(
 
-		(0.01).wait;
-		lastOnsetMemory = chordNumber-2;
-		recentOnsetMemory = chordNumber-1;
-
-		waitdurs = (gestureOnsetsArray.copyRange(lastOnsetMemory,recentOnsetMemory)).flat.differentiate.copyToEnd(1).scramble;
-
-		numevents = waitdurs.size;
-
-		//				("currentChords: " ++ currentChordNotesMidi).postln;
-
-		"waitdurs: ".post; waitdurs.postln;
-		"numevents: ".post; numevents.postln;
-		//						"currentChords: ".currentChordNotesMidi.postln;
-
-		//						midis = chordsNotesMidiArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
-		//						amps = chordsNotesAmpsArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
-		midis = currentChordNotesMidi;
-		amps = currentChordNotesAmps;
+			{var midi,latmidi, thisamp, numNotes, waitbase;
 
 
 
+				//PROCESSO 2: notas reversas para ataques mais fortes
 
 
-		//			routinePlayPlings =
-		(Routine.new({
+				//condicao 1: dinamica boa
+				//condicao 2: conter notas presas
 
-		numevents.do({arg i, notenum, thisNote, thisAmp;
-
-		waitdurs[i].wait;
+				//				currentChordNotesMidi.round.postln;
 
 
-		notenum = i.mod(midis.size);
-		thisNote = midis[notenum];
-		thisAmp = amps[notenum];
+				freq.notNil.if({
 
-		"nota: ".post; thisNote.postln;
+					(
+						((dinamica > -35)
+							&& ([freq.cpsmidi.round.asInteger].includesAny([60,61,63,64,65,66,71,73])))||
+						(dinamica > -25)
+
+					).if({var time,startpos;
+
+						["nota: ",freq.cpsmidi, "din: ", dinamica].postln;
+
+						time = dinamica.linlin(-35,0,1,4.0);
+						startpos = secondsFromBeginning + time;
+						//					[startpos,time].postln;
+
+						{Synth(\playSlice, [\buf, liveBuffer, \outbus, busBFtoDecodeMain, \amp, 0.dbamp,\rate,-1, \azi, rrand(-pi,pi),\startpos, startpos*(s.sampleRate), \durpos,time+0.2,
+							\freqBP,freq,\rqBP,0.2],sourceGroup)}.defer(time);
+
+					});
+				});
 
 
 
 
-		Synth(\oscPings,
-		[
-		\outbusBF, busBFtoDecodeMain,
-		\freq,thisNote.midicps,
-		\azi,rrand(-pi,pi),
-		\rho,rrand(0.3,1.3),
-		\amp, thisAmp.dbamp,
-		\dur, waitdurs[i]*4
-		],
-		sourceGroup);
-
-		});
 
 
 
+		}.fork);
+	};
+	/*{
+	(0.05).wait;
+	(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61, midiAmpEvents, rep, notedur,maxInd;
 
-		}).play;)
+	//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
+
+
+	(currentGestureOnsets.size <= 2).if({
+
+	gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+	},
+	{
+	gestureOns = currentGestureOnsets.differentiate.copyToEnd(1);
+	});
 
 
 
-		})
-		}.fork;*/
+	gestureOns = (gestureOns!20).flat.integrate;
+
+	midiAmpEvents = [currentChordNotesMidi,currentChordNotesAmps].flop;
+
+	rep = (currentChordNotesAmps.size < 4).if({3},{1});
+
+	notedur = currentChordNotesAmps.size.linlin(0,100,4,0.1);
+
+	currentChordNotesMidi.postln;
+
+
+
+	currentChordNotesAmps.order.postln;
+
+	([currentChordNotesMidi,currentChordNotesAmps].flop!2).flatten(1).scramble.do({arg midiamp,i;
+	var midi,amp;
+
+	midi = midiamp[0];
+	amp = midiamp[1];
+
+	{Synth(\oscPings,
+	[
+	\outbusBF, busBFtoDecodeMain,
+	\freq, (midi).midicps,
+	\freqmod, lastFreq.midicps,
+	\azi, rrand(-pi,pi),
+	\rho, 1,//rrand(0.3,1.3),
+	\amp, (amp).dbamp,
+	\dur, notedur,//amp.lincurve(-120,0.0,1,4.0,4),
+	\envbuf, grainEnvBuf,
+	\modind, rrand((midi).midicps*0.1,(midi).midicps*0.95),
+	\bwr,0.001
+	],
+	sourceGroup);}.defer(gestureOns[i]);
+
+	lastFreq = midi;
+	});
+
+
+
+
+	});
+	}*/
+
+
+	/*{
+	(chordNumber >= 2).if({var lastOnsetMemory,recentOnsetMemory,waitdurs, amps, midis, numevents;
+
+	(0.01).wait;
+	lastOnsetMemory = chordNumber-2;
+	recentOnsetMemory = chordNumber-1;
+
+	waitdurs = (gestureOnsetsArray.copyRange(lastOnsetMemory,recentOnsetMemory)).flat.differentiate.copyToEnd(1).scramble;
+
+	numevents = waitdurs.size;
+
+	//				("currentChords: " ++ currentChordNotesMidi).postln;
+
+	"waitdurs: ".post; waitdurs.postln;
+	"numevents: ".post; numevents.postln;
+	//						"currentChords: ".currentChordNotesMidi.postln;
+
+	//						midis = chordsNotesMidiArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
+	//						amps = chordsNotesAmpsArray.copyRange(chordNumber-1,chordNumber).flat.reverse;
+	midis = currentChordNotesMidi;
+	amps = currentChordNotesAmps;
+
+
+
+
+
+	//			routinePlayPlings =
+	(Routine.new({
+
+	numevents.do({arg i, notenum, thisNote, thisAmp;
+
+	waitdurs[i].wait;
+
+
+	notenum = i.mod(midis.size);
+	thisNote = midis[notenum];
+	thisAmp = amps[notenum];
+
+	"nota: ".post; thisNote.postln;
+
+
+
+
+	Synth(\oscPings,
+	[
+	\outbusBF, busBFtoDecodeMain,
+	\freq,thisNote.midicps,
+	\azi,rrand(-pi,pi),
+	\rho,rrand(0.3,1.3),
+	\amp, thisAmp.dbamp,
+	\dur, waitdurs[i]*4
+	],
+	sourceGroup);
+
+	});
+
+
+
+
+	}).play;)
+
+
+
+	})
+	}.fork;*/
+
+
+
+	whileChordIsOnFuncion  = {
 
 	};
 
-	chordOffFunction = {
+	chordOffFunction= {
 
-	};
 
-	whileChordIsOnFuncion = {
+		(
 
+			{var midi,latmidi, thisamp, numNotes, waitbase;
+
+				//				(0.05).wait;
+				(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61, midiAmpEvents, rep, notedur,mainInd, latInd, mainNote, latNote;
+
+					//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
+
+
+					(currentGestureOnsets.size <= 2).if({
+
+						gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
+					},
+					{
+						gestureOns = currentGestureOnsets.differentiate.copyToEnd(1);
+					});
+
+					//					"gestures: ".post;
+					//					gestureOns.postln;
+
+					gestureOns = (gestureOns!150).flat;
+					//					gestureOns = (gestureOns!20).flat.integrate;
+
+					midiAmpEvents = [currentChordNotesMidi,currentChordNotesAmps].flop;
+
+					rep = (currentChordNotesAmps.size < 4).if({5},{1});
+
+					notedur = currentChordNotesAmps.size.linlin(0,100,4,0.1);
+
+					currentChordNotesMidi.postln;
+
+					(currentChordNotesMidi.size >=2).if({
+
+						numNotes = currentChordNotesAmps.size;
+
+						gestureOns.isNil.if({
+
+							gestureOns = ([1,0.5,0.3,0.2,0.1,0.01]!50).flat * 4;
+
+						});
+
+						mainInd = currentChordNotesAmps.order.indexOfEqual(0);
+						latInd = currentChordNotesAmps.order.indexOfEqual(1);
+
+						//						mainInd = currentChordNotesMidi.order.indexOfEqual(numNotes-1);
+						//						latInd = currentChordNotesMidi.order.indexOfEqual(numNotes-2);
+
+						midi = currentChordNotesMidi[mainInd];//.postln;
+						latmidi = currentChordNotesMidi[latInd];//.postln;
+						thisamp = currentChordNotesAmps[mainInd];//.postln;
+
+					},{
+
+						midi = currentChordNotesMidi[0];
+						thisamp = currentChordNotesAmps[0];
+						latmidi = lastFreq;
+					});
+
+
+					/*
+					currentChordNotesMidi.size.do({arg i;
+
+					{*/
+
+
+					numNotes.do({arg i;
+						var essanota,modfreq, modI;
+
+						modI = [120,20.0,100,12,132,14,20,90].choose;
+						essanota = ([midi] ++ ((currentChordNotesMidi!20).flat.scramble)).midicps[i];
+						modfreq = [0.12,0.35,0.567,0.91,1.13,1.378,1.82,2.217].choose * essanota;
+						Synth(\oscPings,
+							[
+								\outbusBF, busBFtoDecodeMain,
+								\freq, essanota,
+								\freqmod, modfreq,
+								\azi, rrand(-pi,pi),
+								\curve, -12,
+								\rho, 1,//rrand(0.3,1.3),
+								\amp, thisamp.linlin(-50,0.0,-12,-9).dbamp,//(thisamp).dbamp,
+								\dur, rrand(0.8,3.2),//thisamp.lincurve(0,-40.0,0.125,1.25),
+								//								\envbuf, grainEnvBuf,
+								\modind, modI/30,//rrand((midi).midicps*0.1,(midi).midicps*0.5),
+								//								\bwr,0.001
+							],
+							sourceGroup);
+
+						gestureOns[i].wait;
+
+					});
+
+					/*							}.defer(gestureOns[i]);
+					});*/
+
+
+					lastFreq = midi;
+				});
+
+
+
+
+
+
+
+		}.fork);
 	};
 
 
@@ -1005,10 +1290,11 @@
 
 		case
 
-		{msg[2] == 100}{var thisNoteState, dinamica;
+		{msg[2] == 100}{var thisNoteState, dinamica, freq;
 
 			thisNoteState = msg[3];
 			dinamica = msg[4];
+			freq = msg[5];
 
 			{
 
@@ -1022,7 +1308,7 @@
 					thisOnsetPeak = dinamica;
 					"=== ON:  ".post;
 					chordNumber.postln;
-					chordOnFunction.value; //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
+					chordOnFunction.(thisNoteState, dinamica, freq); //FUNCAO EXECUTADA QUANDO NOVO ONSET DE ACORDE É DETECTADO!
 					chordsOnsetTime = chordsOnsetTime.add(currentChordOnsetTime);
 					//						currentGestureOnsets = currentGestureOnsets.add(currentChordOnsetTime);
 					/*						"onsets history: ".post;
@@ -1080,65 +1366,9 @@
 				currentGestureOnsetsAmps = currentGestureOnsetsAmps.add(dinamica);
 
 
-				(0.05).wait;
-				//				(currentGestureOnsets - currentChordOnsetTime).postln;
-				//				currentChordNotesMidi.postln;
+				whileChordIsOnFuncion.value;
 
 
-				{
-					(currentChordNotesMidi.notEmpty && (chordNumber > 1)).if({var gestureOns, lastFreq=61, midiAmpEvents, rep, notedur;
-
-						//					gestureOns = (currentGestureOnsets-currentChordOnsetTime).scramble;
-
-
-						(currentGestureOnsets.size <= 2).if({
-
-							gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);
-						},
-						{
-							gestureOns = currentGestureOnsets.differentiate.copyToEnd(1);
-						});
-
-
-/*						gestureOns = (gestureOnsetsArray[chordNumber-1] ++ currentGestureOnsets).differentiate.copyToEnd(1);*/
-
-						gestureOns = (gestureOns!20).flat.integrate;
-
-						midiAmpEvents = [currentChordNotesMidi,currentChordNotesAmps].flop;
-
-						rep = (currentChordNotesAmps.size < 4).if({3},{1});
-
-						notedur = currentChordNotesAmps.size.linlin(0,100,4,0.1);
-
-						([currentChordNotesMidi,currentChordNotesAmps].flop!2).flatten(1).scramble.do({arg midiamp,i;
-							var midi,amp;
-
-							midi = midiamp[0];
-							amp = midiamp[1];
-
-							{Synth(\oscPings,
-								[
-									\outbusBF, busBFtoDecodeMain,
-									\freq, (midi).midicps,
-									\freqmod, lastFreq.midicps,
-									\azi, rrand(-pi,pi),
-									\rho, 1,//rrand(0.3,1.3),
-									\amp, (amp).dbamp,
-									\dur, notedur,//amp.lincurve(-120,0.0,1,4.0,4),
-									\envbuf, grainEnvBuf,
-									\modind, rrand((midi).midicps*0.1,(midi).midicps*0.95),
-									\bwr,0.001
-								],
-								sourceGroup);}.defer(gestureOns[i]);
-
-							lastFreq = midi;
-						});
-
-
-
-
-					});
-				}.fork;
 
 			}.fork;
 

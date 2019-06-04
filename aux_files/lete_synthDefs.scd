@@ -86,7 +86,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 		//envia [1,noteAmp] quando está dentro de um grupo de notas (gesto)
 		//envia [0,noteAmp] quando gesto acabou
-		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp] ,100);
+		SendReply.kr(trigGroupOfNotes,'/pitches',[ampGate,noteAmp,freq] ,100);
 
 		//versão antiga utilizava dois detectores de onset paralelos....
 		//		SendReply.kr(onset,'/pitches',noteAmp,51);//detecta menos onsets (a ideia é que segmente pequenos gestos)
@@ -115,19 +115,43 @@ SynthDef(\noteAnalyzerPolyPitch,
 ).add;
 
 
-SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.01,dur,curve= -4.0,bwr=0.01,freqmod,modind=100,envbuf;
-	var sinosc,envgen,bf,dens;
+SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.001,dur,curve= -4.0,bwr=0.01,freqmod,modind=4,envbuf;
+	var sinosc,sig2,envgen,envgen2,bf,dens,pluck;
 //	sinosc = SinOsc.ar(freq)*amp;
 //	sinosc = Resonz.ar(WhiteNoise.ar,freq,bwr)*SinOsc.ar(Rand(0.1,12));
 //	envgen = EnvGen.ar(Env.sine(dur*1/2,dur*1/2),1,amp,doneAction: 2);
 	envgen = EnvGen.ar(Env.perc(att,dur-att,curve: curve),1,amp,doneAction: 2);
+	envgen2 = EnvGen.ar(Env.perc(att,dur*0.05,curve: curve),1,amp);
+	//pluck = Pluck.ar(WhiteNoise.ar,1,maxdelaytime: 1,delaytime: (freq+(SinOsc.ar(freqmod)*modind)).reciprocal,decaytime: dur);
 //	dens = envgen*2;
 //	sinosc = FMGrainB.ar(Impulse.ar(dens),(1/dens),freq,freqmod,envbuf: envbuf);
-	sinosc = SinOsc.ar(freq+(SinOsc.ar(freqmod)*modind));
-	bf = BFEncode1.ar(sinosc*envgen,azi,el,rho);
+
+	sinosc = SinOsc.ar(freq+(SinOsc.ar(freqmod)*(modind*envgen)))*SinOsc.ar(LFNoise1.ar(1).linlin(-1.0,1.0,0.1,0.33));
+	sig2 = RLPF.ar(BrownNoise.ar,freq,0.09)*envgen2;
+	bf = BFEncode1.ar((sinosc)*envgen + sig2,LFNoise1.kr(rrand(0.2,2)).linlin(-1,1,-3.1415926535898,3.1415926535898),el,rho);
 	Out.ar(outbusBF, bf);
 	}
 ).add;
 
+
+SynthDef(\rec2ch, {arg inbus, buf;
+	var in, rec;
+	in = In.ar(inbus,2);
+	rec = RecordBuf.ar(in,buf,loop: 0,doneAction: 2);
+}).add;
+
+
+SynthDef(\playSlice, {arg buf, outbus,amp=1,rate=1, azi=0, width=0.2, rho=1, el=0, durpos,startpos,freqBP,rqBP=0.01 ;
+	var bufSrate,envgen,play,playL,playR,bf;
+
+
+	envgen = EnvGen.ar(Env([0,1,1,0],[0.01,durpos,0.01],\sin),doneAction: 2);
+	play = PlayBuf.ar(2,buf,rate, startPos: startpos);
+	play = Resonz.ar(play,freqBP,rqBP);
+	playL = BFEncode1.ar(play[0]*envgen*amp,azi+(3.1415926535898*width),el,rho);
+	playR = BFEncode1.ar(play[1]*envgen*amp,azi-(3.1415926535898*width),el,rho);
+	bf = playL+playR;
+	Out.ar(outbus,bf);
+}).add;
 
 
