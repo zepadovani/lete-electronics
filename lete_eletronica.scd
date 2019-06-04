@@ -24,7 +24,7 @@
 	var saveTitView, savText;
 	var serverBootView, serverBootTitleView, serverBootTitle, serverBootButton, serverState;
 	var playAudioFileRoutine, stopAudioFileRoutine, playAudioFileSynth, liveRecSynth;
-	var routeAudioFileToBFSynth,routeAudioFileToBFSynth2;
+	var routeStereoPianoToBFSynth,routeStereoPianoToBFSynth2;
 	var runStartServerRoutine, runStopServerRoutine;
 	var playModes, playMode;
 	var playCount = -1;
@@ -51,11 +51,13 @@
 	var audioAnalyseSynth, audioDetectedPitches,pitchesOSCResponder;
 
 	var synthMic1Level,synthMic2Level, synthOutLevel;
-	var synthDecoder;
+	var synthDecoderLiveSounds,synthDecoderDrySounds,synthDecoderRessonances;
 
 	var sourceGroup, afterSourceGroup, mlisteningGroup, sourceProcessingGroup, midProcessingGroup, tailProcessingGroup, reverbGroupA, reverbGroupB, decodeGroup, postDecodeGroup;
 
-	var busBFtoDecodeMain,pianoBFBus;
+	var synthArrayStringVerbs;
+
+	var busBFtoDecodeMain, busBFtoDecodeLivePiano, busBFtoDecodeSynthSoundsIn, busBFtoDecodeSynthSoundsOut, pianoBFBus;
 
 	var checkAndAddNote, takeMeanOfCloseValuesInList;
 
@@ -113,6 +115,11 @@
 	var decodeAngles;
 	var secondsFromBeginning = 0;
 
+
+	var kBusLivePianoAmpControl,kBusReverseAttacksAmpControl, kBusFMGongsAmpControl, kbusKarplusVerbAmpControl;
+
+	var levelAdjustmentsTitleView,levelAdjustmentsTitleViewTitleText,levelAdjustmentsView;
+	var levelAdjustmentsLivePianoFaderText,levelAdjustmentsLivePianoFader;
 
 	currentEnvironment.clear;
 
@@ -685,17 +692,6 @@
 					\amp,1.0],
 				sourceGroup);
 
-			routeAudioFileToBFSynth = Synth(\routeStereoToBF,
-				[
-					\inbus, pianoStereoBus,
-					\outbus, busBFtoDecodeMain,
-					\azi, 0, //AJUSTAR
-					\env, Env([0,1,0],[0.1,5],\sin,1).asArray
-
-			],playAudioFileSynth,\addAfter);
-
-
-
 		}.fork(AppClock);
 
 	};
@@ -733,6 +729,15 @@
 				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
 
 				busBFtoDecodeMain = Bus.new('audio',140,4,s);
+				busBFtoDecodeLivePiano = Bus.new('audio',144,4,s);
+				busBFtoDecodeSynthSoundsIn = Bus.new('audio',148,4,s);
+				busBFtoDecodeSynthSoundsOut = Bus.new('audio',152,4,s);
+
+
+				kBusLivePianoAmpControl = Bus.new('control',0,1,s);
+				kBusReverseAttacksAmpControl = Bus.new('control',1,1,s);
+				kBusFMGongsAmpControl =  Bus.new('control',2,1,s);
+				kbusKarplusVerbAmpControl = Bus.new('control',3,1,s);
 
 				sourceGroup = Group.new;
 				afterSourceGroup = Group.new(sourceGroup,\addAfter);
@@ -745,7 +750,44 @@
 				decodeGroup = Group.new(reverbGroupB,\addAfter);
 				postDecodeGroup = Group.new(decodeGroup,\addAfter);
 
-				synthDecoder = Synth(\BFdecoder, [\ambInbus, busBFtoDecodeMain, \outbus, 0],decodeGroup);
+				routeStereoPianoToBFSynth = Synth(\routeStereoToBF,
+					[
+						\inbus, pianoStereoBus,
+						\outbus, busBFtoDecodeLivePiano,
+						\azi, 0, //AJUSTAR
+						\env, Env([0,1,0],[0.1,5],\sin,1).asArray
+
+				],afterSourceGroup);
+
+				synthDecoderLiveSounds = Synth(\BFdecoder,
+					[\ambInbus, busBFtoDecodeLivePiano, \outbus, 0],
+					decodeGroup);
+
+				synthDecoderDrySounds = Synth(\BFdecoder,
+					[\ambInbus, busBFtoDecodeSynthSoundsIn, \outbus, 0],
+					decodeGroup);
+
+				synthDecoderRessonances = Synth(\BFdecoder,
+					[\ambInbus, busBFtoDecodeSynthSoundsOut, \outbus, 0],
+					decodeGroup);
+
+				synthArrayStringVerbs = [60,61,63,64,65,66,71,73].collect({arg midiNote;
+
+					Synth(\bfKarplusVerb, [
+						\bfInBus,
+						busBFtoDecodeSynthSoundsIn,
+						\bfOutBus,
+						busBFtoDecodeSynthSoundsOut,
+						/*						\outBus,
+						0,*/
+						\inamp,-16.dbamp,
+						\lpf, 5000,
+						//						\rq, 0.03,
+						\freq, midiNote.midicps,
+						\aten2,0.99,
+						\at2,0.99],decodeGroup)
+				});
+
 
 				synthOutLevel = Synth(\leteOutLevels,target: postDecodeGroup);
 
@@ -788,9 +830,9 @@
 					(valor == 1).if(
 						{
 
-				playCount = 1;
+							playCount = 1;
 
-				playStatusText.string = playStatusFunction.value;
+							playStatusText.string = playStatusFunction.value;
 
 							{
 								tclock = TempoClock.new(1);
@@ -877,7 +919,7 @@
 
 
 
-	playStatusTextTitle = StaticText.new(playControlView,Rect(10,110,390,20)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
+	playStatusTextTitle = StaticText.new(playControlView,Rect(10,110,390,30)).string_("performance status:").font_(Font("Arial",15,true)).stringColor_(Color.hsv(0,0.8,0.4));
 
 	playStatusText = StaticText.new(playControlView,Rect(170,110,390,20)).string_(playStatusFunction.value).font_(Font("Arial",20,true)).stringColor_(Color.hsv(0,0.9,0.7));
 
@@ -990,6 +1032,17 @@
 
 
 
+	levelAdjustmentsTitleView = UserView(leteControlTab,Rect(304,2,500,29)).background_(Color.hsv(1,0,0.2));
+	levelAdjustmentsTitleViewTitleText = StaticText.new(levelAdjustmentsTitleView,Rect(10,3,190,20)).string_("LEVELS CONTROL").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
+
+	levelAdjustmentsView = UserView(leteControlTab,Rect(304,31,500,400)).background_(Color.hsv(1,0,0.7));
+
+	levelAdjustmentsLivePianoFaderText = StaticText.new(levelAdjustmentsView,Rect(40,15,50,25)).string_("LIVE").font_(Font("Arial",16,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+	levelAdjustmentsLivePianoFader = Slider(levelAdjustmentsView, Rect(40,40,50,200));
+
+
+
+
 	//ações realizadas a cada onset
 	chordOnFunction = {arg thisNoteState, dinamica, freq;
 
@@ -1024,8 +1077,8 @@
 						startpos = secondsFromBeginning + time;
 						//					[startpos,time].postln;
 
-						{Synth(\playSlice, [\buf, liveBuffer, \outbus, busBFtoDecodeMain, \amp, 0.dbamp,\rate,-1, \azi, rrand(-pi,pi),\startpos, startpos*(s.sampleRate), \durpos,time+0.2,
-							\freqBP,freq,\rqBP,0.2],sourceGroup)}.defer(time);
+						{Synth(\playSlice, [\buf, liveBuffer, \outbus, busBFtoDecodeSynthSoundsIn, \amp, 0.dbamp,\rate,-1, \aziInit, 0,\aziEnd,rrand(0.4,1)*([1,-1].choose),\startpos, startpos*(s.sampleRate), \durpos,time+0.2,
+							\freqBP,freq,\rqBP,0.5],sourceGroup)}.defer(time);
 
 					});
 				});
@@ -1249,14 +1302,14 @@
 						modfreq = [0.12,0.35,0.567,0.91,1.13,1.378,1.82,2.217].choose * essanota;
 						Synth(\oscPings,
 							[
-								\outbusBF, busBFtoDecodeMain,
+								\outbusBF, busBFtoDecodeSynthSoundsIn,
 								\freq, essanota,
 								\freqmod, modfreq,
 								\azi, rrand(-pi,pi),
 								\curve, -12,
 								\rho, 1,//rrand(0.3,1.3),
-								\amp, thisamp.linlin(-50,0.0,-12,-9).dbamp,//(thisamp).dbamp,
-								\dur, rrand(0.8,3.2),//thisamp.lincurve(0,-40.0,0.125,1.25),
+								\amp, thisamp.linlin(-50,0.0,-12,-4).dbamp,//(thisamp).dbamp,
+								\dur, rrand(0.8,5.2),//thisamp.lincurve(0,-40.0,0.125,1.25),
 								//								\envbuf, grainEnvBuf,
 								\modind, modI/30,//rrand((midi).midicps*0.1,(midi).midicps*0.5),
 								//								\bwr,0.001

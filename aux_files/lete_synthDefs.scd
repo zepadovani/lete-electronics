@@ -42,20 +42,20 @@ SynthDef(\BFdecoder,
 		var w,x,y,z,decode;
 		#w,x,y,z = In.ar(ambInbus,4);
 		decode = BFDecode1.ar(w,x,y,z, ~aziEspaco);
-		Out.ar(outBus,Limiter.ar(decode,0.9999));
+		Out.ar(outBus,Limiter.ar(decode,-1.dbamp));
 	}
 ).add;
 
 
 //[numberofvoicesdetected, frequency in Hz of voice 1, salience of voice 1, frequency of voice 2, salience of voice 2, ...]
 /*SynthDef(\noteAnalyzerPolyPitch,
-	{arg pianoStereoInBus,levelcompressionfactor=(-0.1),mixleftterm=4.0,torprec=0.0000001,cancellationweight=1.0,polyphonyestimategamma=0.66;
+{arg pianoStereoInBus,levelcompressionfactor=(-0.1),mixleftterm=4.0,torprec=0.0000001,cancellationweight=1.0,polyphonyestimategamma=0.66;
 
-		var in,pitches,maxvoices=4;
-		in = Mix.ar(In.ar(pianoStereoInBus,2));
-		pitches = PolyPitch.kr(in,maxvoices, levelcompressionfactor, mixleftterm, torprec, cancellationweight, polyphonyestimategamma);
+var in,pitches,maxvoices=4;
+in = Mix.ar(In.ar(pianoStereoInBus,2));
+pitches = PolyPitch.kr(in,maxvoices, levelcompressionfactor, mixleftterm, torprec, cancellationweight, polyphonyestimategamma);
 //		SendReply.kr(Impulse.kr(20),'/pitches',pitches,50);
-	}
+}
 ).add;*/
 
 
@@ -73,7 +73,7 @@ SynthDef(\noteAnalyzerPolyPitch,
 		amp2 = PeakFollower.kr(in);
 
 		moreonsets = Onsets.kr(chain,thresh2,\complex,time2,0.1,mingap: 5);
-//		onset = Onsets.kr(chain,thresh,\complex,time,0.2,mingap: 50);
+		//		onset = Onsets.kr(chain,thresh,\complex,time,0.2,mingap: 50);
 		ampGate = (Decay.kr(moreonsets,timeTrig) > lowlevthresh);//.scope(bufsize: (2**16).asInteger);
 
 		trigGate = Gate.kr(Impulse.kr(80),ampGate);
@@ -100,16 +100,16 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 
 		//não é mais necessário?
-//		SendReply.kr(Impulse.kr(80),'/pitches',noteAmp,52);//detecta amplitudes continuamente, o que é usado para determinar fim de grandes frases por queda de amplitude
+		//		SendReply.kr(Impulse.kr(80),'/pitches',noteAmp,52);//detecta amplitudes continuamente, o que é usado para determinar fim de grandes frases por queda de amplitude
 
 
 
 
 		// testar onsets por nota
-/*		Out.ar(0,
-			(SinOsc.ar(1660)*EnvGen.ar(Env.perc(0.001,0.05,0.9),moreonsets)!2)
-//			+
-//			(WhiteNoise.ar*EnvGen.ar(Env.perc(0.001,0.05,1),onset)!2)
+		/*		Out.ar(0,
+		(SinOsc.ar(1660)*EnvGen.ar(Env.perc(0.001,0.05,0.9),moreonsets)!2)
+		//			+
+		//			(WhiteNoise.ar*EnvGen.ar(Env.perc(0.001,0.05,1),onset)!2)
 		);*/
 	}
 ).add;
@@ -117,20 +117,20 @@ SynthDef(\noteAnalyzerPolyPitch,
 
 SynthDef(\oscPings, {arg outbusBF,freq,azi=0,rho=1,el=0,amp,att=0.001,dur,curve= -4.0,bwr=0.01,freqmod,modind=4,envbuf;
 	var sinosc,sig2,envgen,envgen2,bf,dens,pluck;
-//	sinosc = SinOsc.ar(freq)*amp;
-//	sinosc = Resonz.ar(WhiteNoise.ar,freq,bwr)*SinOsc.ar(Rand(0.1,12));
-//	envgen = EnvGen.ar(Env.sine(dur*1/2,dur*1/2),1,amp,doneAction: 2);
+	//	sinosc = SinOsc.ar(freq)*amp;
+	//	sinosc = Resonz.ar(WhiteNoise.ar,freq,bwr)*SinOsc.ar(Rand(0.1,12));
+	//	envgen = EnvGen.ar(Env.sine(dur*1/2,dur*1/2),1,amp,doneAction: 2);
 	envgen = EnvGen.ar(Env.perc(att,dur-att,curve: curve),1,amp,doneAction: 2);
 	envgen2 = EnvGen.ar(Env.perc(att,dur*0.05,curve: curve),1,amp);
 	//pluck = Pluck.ar(WhiteNoise.ar,1,maxdelaytime: 1,delaytime: (freq+(SinOsc.ar(freqmod)*modind)).reciprocal,decaytime: dur);
-//	dens = envgen*2;
-//	sinosc = FMGrainB.ar(Impulse.ar(dens),(1/dens),freq,freqmod,envbuf: envbuf);
+	//	dens = envgen*2;
+	//	sinosc = FMGrainB.ar(Impulse.ar(dens),(1/dens),freq,freqmod,envbuf: envbuf);
 
-	sinosc = SinOsc.ar(freq+(SinOsc.ar(freqmod)*(modind*envgen)))*SinOsc.ar(LFNoise1.ar(1).linlin(-1.0,1.0,0.1,0.33));
+	sinosc = SinOsc.ar(freq+(SinOsc.ar(freqmod)*(modind*envgen)))*SinOsc.ar(LFNoise1.ar(1).linlin(-1.0,1.0,0.33,1.33));
 	sig2 = RLPF.ar(BrownNoise.ar,freq,0.09)*envgen2;
 	bf = BFEncode1.ar((sinosc)*envgen + sig2,LFNoise1.kr(rrand(0.2,2)).linlin(-1,1,-3.1415926535898,3.1415926535898),el,rho);
 	Out.ar(outbusBF, bf);
-	}
+}
 ).add;
 
 
@@ -141,17 +141,68 @@ SynthDef(\rec2ch, {arg inbus, buf;
 }).add;
 
 
-SynthDef(\playSlice, {arg buf, outbus,amp=1,rate=1, azi=0, width=0.2, rho=1, el=0, durpos,startpos,freqBP,rqBP=0.01 ;
-	var bufSrate,envgen,play,playL,playR,bf;
+SynthDef(\playSlice, {arg buf, outbus,amp=1,rate=1, aziInit=0, aziEnd=3.1415926535898, width=0.2, rho=1, el=0, durpos,startpos,freqBP,rqBP=0.01 ;
+	var bufSrate,envgen,envAzi,play,playL,playR,bf;
 
 
 	envgen = EnvGen.ar(Env([0,1,1,0],[0.01,durpos,0.01],\sin),doneAction: 2);
+	envAzi = EnvGen.kr(Env([aziInit,aziEnd]*3.1415926535898,[durpos],\lin));
 	play = PlayBuf.ar(2,buf,rate, startPos: startpos);
 	play = Resonz.ar(play,freqBP,rqBP);
-	playL = BFEncode1.ar(play[0]*envgen*amp,azi+(3.1415926535898*width),el,rho);
-	playR = BFEncode1.ar(play[1]*envgen*amp,azi-(3.1415926535898*width),el,rho);
+	playL = BFEncode1.ar(play[0]*envgen*amp,(envAzi+(3.1415926535898*width)),el,rho);
+	playR = BFEncode1.ar(play[1]*envgen*amp,(envAzi-(3.1415926535898*width)),el,rho);
 	bf = playL+playR;
 	Out.ar(outbus,bf);
 }).add;
 
+//
+// SynthDef(\ressonantStrings, {arg inbus,inamp=1,lpf=7000,res=0,freq = 1000,aten=0.995,at2=1,
+//
+//
+// 	outbus,noisedur=0.05,gate=1, amp=1,pwsize=0.2,pdev=0.3,pdisp=0,tdisp=0,,dist=20,ratio=1,res=0;
+// 	var insig,locinsig, delaydur, sound, locout, bf;
+//
+// 	ruido, envRuido,envG,sound,locout, ,outsound,devratio;
+//
+// 	insig = (In.ar(inbus,2).sum)*inamp;
+//
+// 	locinsig = LocalIn.ar(1,0);
+// 	//			DetectSilence.ar(locinsig,amp:-50.dbamp,doneAction:2);
+// 	locinsig = RLPFD.ar(locinsig,lpf,res);
+// 	locinsig = ((locinsig*at2)*0.5) + (Delay1.ar(Delay2.ar(locinsig*at2))*0.5);
+// 	//			locinsig = APF.ar(locinsig,1200);
+// 	//			ruido = WhiteNoise.ar;
+// 	delaydur = freq.reciprocal - ControlRate.ir.reciprocal;
+//
+// 	sound = DelayL.ar(insig + (locinsig * aten), delaydur*2, delaydur);
+// 	//	devratio = LFNoise1.kr(WhiteNoise.kr.linlin(-1,1,0.2,20),pdev);
+// 	locout = LocalOut.ar(sound);
+//
+// 	//	outsound = PitchShift.ar((locinsig*amp),pwsize,devratio.midiratio * ratio,pdisp,tdisp);
+// 	bf = BFEncode1.ar(locinsig,
+//
+// 		Out.ar(outbus,Limiter.ar((outsound*dist).distort/dist,-6.dbamp)!2);
+// 	}).add;
+
+
+
+SynthDef(\bfKarplusVerb, {arg bfInBus,bfOutBus, inamp=1,lpf=7000,freq = 1000,aten=0.995,at2=1,gate=1;
+	var w,x,y,z,a,b,c,d,ow,ox,oy,oz,locinsig,delaydur, sound, locout,decode,envgen;
+
+	envgen = EnvGen.ar(Env([0,0,1,0],[0.2,2,1],\sin,2),gate,doneAction: 2);
+	#w,x,y,z = In.ar(bfInBus*envgen,4);
+	#a,b,c,d = B2A.ar(w,x,y,z)*inamp*envgen;
+	//conferir se isso é necessário
+	#a, b, c, d = DelayN.ar([a, b, c, d], 0.001, Array.fill(4, {Rand.new(0.0, 0.001)}))*envgen;
+	locinsig = LocalIn.ar(4,0)*envgen;
+	locinsig = LPF.ar(locinsig,lpf)*envgen;
+	locinsig = ((locinsig*at2)*0.5) + (Delay1.ar(Delay2.ar(locinsig*at2))*0.5)*envgen;
+	delaydur = freq.reciprocal - ControlRate.ir.reciprocal;
+	sound = DelayL.ar([a,b,c,d] + (locinsig * aten), delaydur*2, delaydur)*envgen;
+	locout = LocalOut.ar(sound)*envgen;
+	#ow,ox,oy,oz = A2B.ar(locinsig[0],locinsig[1],locinsig[2],locinsig[3])*envgen;
+//	decode = BFDecode1.ar(ow,ox,oy,oz, ~aziEspaco);
+//	Out.ar(outBus,Limiter.ar(decode,0.9999)*envgen);
+	Out.ar(bfOutBus,ow,ox,oy,oz);
+}).add;
 
