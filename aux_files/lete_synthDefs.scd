@@ -28,12 +28,15 @@ SynthDef(\playAudioFile, {arg outbus, bufnum, amp=1.0,loop=0,doneAction=2, reply
 	out = Out.ar(outbus, pbuf);
 }).add;
 
-SynthDef(\routeStereoToBF, {arg inbus,outbus,azi=0,rho=1,el=0,width= 1.5707963267949,gate=1,amp=1,doneAction=0;
-	var in, w, x, y, z, enve, envgen,out;
-	in = In.ar(inbus,2);
+SynthDef(\routeStereoToBF, {arg inbus,outbus,kbus,azi=0,rho=1,el=0,width= 1.5707963267949,gate=1,amp=1,doneAction=0,replyRate=10.0, peakLag=1,repID;
+	var in, w, x, y, z, enve, envgen,out,kbusin,peak;
+
+	kbusin = In.kr(kbus);
 	enve = Control.names(\env).kr(Env.newClear(20).asArray);
 	envgen = EnvGen.kr(enve, gate,doneAction:doneAction);
-	#w,x,y,z = BFEncodeSter.ar(in[0],in[1],azi,width,el,rho)*amp*envgen;
+	in = In.ar(inbus,2)*amp*envgen*kbusin;
+	peak = SendPeakRMS.ar(in,replyRate,peakLag,'/routers',repID);
+	#w,x,y,z = BFEncodeSter.ar(in[0],in[1],azi,width,el,rho);
 	out = Out.ar(outbus, [w,x,y,z]);
 }).add;
 
@@ -43,6 +46,21 @@ SynthDef(\BFdecoder,
 		#w,x,y,z = In.ar(ambInbus,4);
 		decode = BFDecode1.ar(w,x,y,z, ~aziEspaco);
 		Out.ar(outBus,Limiter.ar(decode,-1.dbamp));
+	}
+).add;
+
+
+SynthDef(\mainBFdecoder,
+	{arg ambInbus, outBus=0,kbus, amp=1, replyRate=20.0, peakLag=1,repID,limiteramp = -1.dbamp;
+		var kbusin,w,x,y,z,decode,peak;
+
+		kbusin = In.kr(kbus);
+//		kbusin.ampdb.poll;
+
+		#w,x,y,z = In.ar(ambInbus,4)*amp*kbusin;
+		decode = Limiter.ar(BFDecode1.ar(w,x,y,z, ~aziEspaco),-1.dbamp);
+		Out.ar(outBus,decode);
+		peak = SendPeakRMS.ar(decode,replyRate,peakLag,'/routers',repID);
 	}
 ).add;
 
@@ -184,8 +202,6 @@ SynthDef(\playSlice, {arg buf, outbus,amp=1,rate=1, aziInit=0, aziEnd=3.14159265
 // 		Out.ar(outbus,Limiter.ar((outsound*dist).distort/dist,-6.dbamp)!2);
 // 	}).add;
 
-
-
 SynthDef(\bfKarplusVerb, {arg bfInBus,bfOutBus, inamp=1,lpf=7000,freq = 1000,aten=0.995,at2=1,gate=1;
 	var w,x,y,z,a,b,c,d,ow,ox,oy,oz,locinsig,delaydur, sound, locout,decode,envgen;
 
@@ -206,3 +222,37 @@ SynthDef(\bfKarplusVerb, {arg bfInBus,bfOutBus, inamp=1,lpf=7000,freq = 1000,ate
 	Out.ar(bfOutBus,ow,ox,oy,oz);
 }).add;
 
+SynthDef(\kenvdBamp, {arg outkBus,initVal,endVal, dur, curve=\lin;
+	var envgen;
+
+	envgen = EnvGen.kr(Env([initVal,endVal],[dur],curve),doneAction: 2);
+	Out.kr(outkBus, envgen.dbamp)
+}).add;
+
+SynthDef(\route2chAmpControlLevelMeter, {arg inbus,outbus,kbus,amp=1,replyRate=10.0, peakLag=1,repID;
+	var in,kbusin,out,peak;
+
+	kbusin = In.kr(kbus);
+	in = In.ar(inbus,2)*amp*kbusin;
+	peak = SendPeakRMS.ar(in,replyRate,peakLag,'/routers',repID);
+	Out.ar(outbus,in);
+}).add;
+
+SynthDef(\route4chAmpControlLevelMeter, {arg inbus,outbus,kbus,amp=1,replyRate=10.0, peakLag=1,repID;
+	var in,kbusin,out,peak;
+
+	kbusin = In.kr(kbus);
+	in = In.ar(inbus,4)*amp*kbusin;
+
+	peak = SendPeakRMS.ar(in,replyRate,peakLag,'/routers',repID);
+	Out.ar(outbus,in);
+}).add;
+
+SynthDef(\route4ch, {arg inbus,outbus,amp=1;
+	var in,out;
+	in = In.ar(inbus,4)*amp;
+	Out.ar(outbus,in);
+}).add;
+
+
+	

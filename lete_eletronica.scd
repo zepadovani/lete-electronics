@@ -24,7 +24,7 @@
 	var saveTitView, savText;
 	var serverBootView, serverBootTitleView, serverBootTitle, serverBootButton, serverState;
 	var playAudioFileRoutine, stopAudioFileRoutine, playAudioFileSynth, liveRecSynth;
-	var routeStereoPianoToBFSynth,routeStereoPianoToBFSynth2;
+
 	var runStartServerRoutine, runStopServerRoutine;
 	var playModes, playMode;
 	var playCount = -1;
@@ -53,11 +53,13 @@
 	var synthMic1Level,synthMic2Level, synthOutLevel;
 	var synthDecoderLiveSounds,synthDecoderDrySounds,synthDecoderRessonances;
 
-	var sourceGroup, afterSourceGroup, mlisteningGroup, sourceProcessingGroup, midProcessingGroup, tailProcessingGroup, reverbGroupA, reverbGroupB, decodeGroup, postDecodeGroup;
+	var sourceGroup, afterSourceGroup, mlisteningGroup, sourceProcessingGroup, midProcessingGroup, tailProcessingGroup, reverbGroupA, reverbGroupB, preDecodeGroup, decodeGroup, postDecodeGroup;
 
 	var synthArrayStringVerbs;
 
-	var busBFtoDecodeMain, busBFtoDecodeLivePiano, busBFtoDecodeSynthSoundsIn, busBFtoDecodeSynthSoundsOut, pianoBFBus;
+	var busBFtoDecodeMain, busBFrouterReverseAttacks, busBFrouterPercSynths, busBFrouterReverseAttacksPostFader,busBFrouterPercSynthsPostFader,busBFrouterStringResonanceIn,busBFrouterStringResonanceOut;
+
+
 
 	var checkAndAddNote, takeMeanOfCloseValuesInList;
 
@@ -116,12 +118,59 @@
 	var secondsFromBeginning = 0;
 
 
-	var kBusLivePianoAmpControl,kBusReverseAttacksAmpControl, kBusFMGongsAmpControl, kbusKarplusVerbAmpControl;
+	var kBusLivePianoAmpControl,kBusReverseAttacksAmpControl, kBusPercSynthsAmpControl, kBusStringResonanceAmpControl, kBusMainOutAmpControl;
+
+	var routeStereoPianoToBFSynth, synthMainDecoder, synthRouteReverseAttacks, synthRouteReverseAttacksToDecode, synthRouteReverseAttacksToStringResonance,synthRoutePercSynths,synthRoutePercSynthsToDecode,synthRoutePercSynthsToStringResonance,synthRouteStringResonance;
+
 
 	var levelAdjustmentsTitleView,levelAdjustmentsTitleViewTitleText,levelAdjustmentsView;
-	var levelAdjustmentsLivePianoFaderText,levelAdjustmentsLivePianoFader;
+	var levelAdjustmentsLivePianoFaderText,	levelAdjustmentsLivePianoFaderText2,levelAdjustmentsLivePianoFader,levelAdjustmentsLivePianoNumber;
+	var livePianoFaderPos, livePianoFaderdB;
+
+	var levelAdjustmentsReverseAttacksFaderText, levelAdjustmentsReverseAttacksFader, levelAdjustmentsReverseAttacksNumber, reverseAttacksFaderPos, reverseAttacksFaderdB;
+
+	var levelAdjustmentsPercSynthsFaderText, levelAdjustmentsPercSynthsFader, levelAdjustmentsPercSynthsNumber, percSynthsFaderPos, percSynthsFaderdB;
+
+	var levelAdjustmentsStringResonanceFaderText, levelAdjustmentsStringResonanceFader, levelAdjustmentsStringResonanceNumber, stringResonanceFaderPos, stringResonanceFaderdB;
+
+	var levelAdjustmentsMainOutFaderText, levelAdjustmentsMainOutFader, levelAdjustmentsMainOutNumber, mainOutFaderPos, mainOutFaderdB;
+
+	var faderPosTodB, dBToFaderPos;
+
+	var serveron=false;
+
 
 	currentEnvironment.clear;
+
+
+	faderPosTodB = 	{arg val;
+		var conv;
+
+		val = val.linlin(0,1.0,0,1.075);
+
+		conv = case
+		{val < 0.0001}{-inf}
+		{val >= 0.0001}{val.linlin(0,1.075,-80,6)};
+
+		conv;
+
+	};
+
+
+
+	dBToFaderPos = {arg dB,scale=\pos;
+		var conv,out;
+
+		conv = case
+		{dB <= -80}{0}
+		{dB > -80}{dB.linlin(-80,6.0,0,1.075)};
+
+		out = case
+		{scale == \pos}{conv}
+		{scale == \scaledpos}{conv.linlin(0,1.075,0,1.0)};
+
+		out
+	};
 
 
 	playModes = ["Audio File","Live"];
@@ -235,6 +284,23 @@
 	decodeSelected = ~letePrefs.at(\decodeSetup);
 
 	playMode = ~letePrefs.at(\playMode);
+
+	livePianoFaderPos = ~letePrefs.at(\livePianoFaderPos).asFloat;
+	livePianoFaderdB = ~letePrefs.at(\livePianoFaderdB).asFloat;
+
+	reverseAttacksFaderPos = ~letePrefs.at(\reverseAttacksFaderPos).asFloat;
+	reverseAttacksFaderdB = ~letePrefs.at(\reverseAttacksFaderdB).asFloat;
+
+	percSynthsFaderPos = ~letePrefs.at(\percSynthsFaderPos).asFloat;
+	percSynthsFaderdB = ~letePrefs.at(\percSynthsFaderdB).asFloat;
+
+	stringResonanceFaderPos = ~letePrefs.at(\stringResonanceFaderPos).asFloat;
+	stringResonanceFaderdB = ~letePrefs.at(\stringResonanceFaderdB).asFloat;
+
+	mainOutFaderPos = ~letePrefs.at(\mainOutFaderPos).asFloat;
+	mainOutFaderdB = ~letePrefs.at(\mainOutFaderdB).asFloat;
+
+
 
 	spAngles = 8.collect({arg i;
 		var dictsyms;
@@ -716,6 +782,8 @@
 
 			s.waitForBoot({
 
+				serveron = true;
+
 				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
 
 				liveBuffer = Buffer.alloc(s, s.sampleRate * (10 * 60), 2);
@@ -726,18 +794,44 @@
 				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1,s);
 
 				pianoStereoBus = Bus.new('audio',mic2InterfaceBus.index + 1,2,s);
-				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
+//				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
 
+				//rotear para esse bus todos os roteadores que leem kbus e mandam replies com picos
 				busBFtoDecodeMain = Bus.new('audio',140,4,s);
-				busBFtoDecodeLivePiano = Bus.new('audio',144,4,s);
-				busBFtoDecodeSynthSoundsIn = Bus.new('audio',148,4,s);
-				busBFtoDecodeSynthSoundsOut = Bus.new('audio',152,4,s);
+
+
+
+				//esses buses leem a saida de processos que geram sons bf e escala amplitudes utilizando
+				//kbuses, enviando os sinais, em seguida, para o decoder geral (tambem leem picos)
+//				busBFrouterLivePiano = Bus.new('audio',144,4,s); 				//unico desenecessario, pq já faz router e PeakFollowing....
+				busBFrouterReverseAttacks = Bus.new('audio',148,4,s);
+				busBFrouterPercSynths = Bus.new('audio',152,4,s);
+				busBFrouterReverseAttacksPostFader = Bus.new('audio',154,4,s); //NOVO
+				busBFrouterPercSynthsPostFader  = Bus.new('audio',158,4,s);//NOVO
+
+
+				busBFrouterStringResonanceIn = Bus.new('audio',156,4,s);
+				busBFrouterStringResonanceOut = Bus.new('audio',160,4,s);
+
+
+
+//				busBFtoDecodeSynthSoundsIn = Bus.new('audio',170,4,s);
+//				busBFtoDecodeSynthSoundsOut = Bus.new('audio',174,4,s);
 
 
 				kBusLivePianoAmpControl = Bus.new('control',0,1,s);
 				kBusReverseAttacksAmpControl = Bus.new('control',1,1,s);
-				kBusFMGongsAmpControl =  Bus.new('control',2,1,s);
-				kbusKarplusVerbAmpControl = Bus.new('control',3,1,s);
+				kBusPercSynthsAmpControl =  Bus.new('control',2,1,s);
+				kBusStringResonanceAmpControl = Bus.new('control',3,1,s);
+				kBusMainOutAmpControl = Bus.new('control',4,1,s);
+
+				s.sync(cond);
+				kBusLivePianoAmpControl.setSynchronous(livePianoFaderdB.dbamp);
+				kBusReverseAttacksAmpControl.setSynchronous(reverseAttacksFaderdB.dbamp);
+				kBusPercSynthsAmpControl.setSynchronous(percSynthsFaderdB.dbamp);
+				kBusStringResonanceAmpControl.setSynchronous(stringResonanceFaderdB.dbamp);
+				kBusMainOutAmpControl.setSynchronous(mainOutFaderdB.dbamp);
+
 
 				sourceGroup = Group.new;
 				afterSourceGroup = Group.new(sourceGroup,\addAfter);
@@ -747,40 +841,113 @@
 				tailProcessingGroup = Group.new(midProcessingGroup,\addAfter);
 				reverbGroupA = Group.new(tailProcessingGroup,\addAfter);
 				reverbGroupB = Group.new(reverbGroupA,\addAfter);
-				decodeGroup = Group.new(reverbGroupB,\addAfter);
+				preDecodeGroup = Group.new(reverbGroupB,\addAfter); //NOVO
+				decodeGroup = Group.new(preDecodeGroup,\addAfter);
 				postDecodeGroup = Group.new(decodeGroup,\addAfter);
 
 				routeStereoPianoToBFSynth = Synth(\routeStereoToBF,
 					[
 						\inbus, pianoStereoBus,
-						\outbus, busBFtoDecodeLivePiano,
+						\outbus, busBFtoDecodeMain,
+						\kbus,kBusLivePianoAmpControl,
 						\azi, 0, //AJUSTAR
-						\env, Env([0,1,0],[0.1,5],\sin,1).asArray
+						\env, Env([0,1,0],[0.1,5],\sin,1).asArray,
+						\replyRate, 10.0,
+						\amp,1,
+						\peakLag,1,
+						\repID,1
+				],sourceGroup,\addToTail);
 
+				synthMainDecoder = Synth(\mainBFdecoder,
+					[
+						\ambInbus, busBFtoDecodeMain,
+						\outBus, 0,
+						\kbus, kBusMainOutAmpControl,
+						\amp,1,
+						\replyRate, 10.0,
+						\peakLag,1,
+						\repID,15
+				],decodeGroup);
+
+/*				Synth(\BFdecoder,
+					[\ambInbus, busBFtoDecodeMain, \outbus, 0],
+				decodeGroup);*/
+
+				//Roteiam sinais BF para o decoder geral, incorporando controles individuais de amplitude
+				//via bus de controle e enviando sinais de pico via osc
+				synthRouteReverseAttacks = Synth(\route4chAmpControlLevelMeter,
+					[
+						\inbus,busBFrouterReverseAttacks,
+						\outbus,busBFrouterReverseAttacksPostFader,
+						\kbus,kBusReverseAttacksAmpControl,
+						\replyRate, 10.0,
+						\peakLag,1,
+						\repID,2
 				],afterSourceGroup);
 
-				synthDecoderLiveSounds = Synth(\BFdecoder,
-					[\ambInbus, busBFtoDecodeLivePiano, \outbus, 0],
-					decodeGroup);
+				//roteia ataques reversos diretamente ao decoder ambisonics
+				synthRouteReverseAttacksToDecode = Synth(\route4ch,
+					[
+						\inbus,busBFrouterReverseAttacksPostFader,
+						\outbus,busBFtoDecodeMain],preDecodeGroup);
 
-				synthDecoderDrySounds = Synth(\BFdecoder,
-					[\ambInbus, busBFtoDecodeSynthSoundsIn, \outbus, 0],
-					decodeGroup);
+				//roteia ataques reversos ao string reverb
+				synthRouteReverseAttacksToStringResonance = Synth(\route4ch,
+					[
+						\inbus,busBFrouterReverseAttacksPostFader,
+						\outbus,busBFrouterStringResonanceIn],tailProcessingGroup);
 
-				synthDecoderRessonances = Synth(\BFdecoder,
-					[\ambInbus, busBFtoDecodeSynthSoundsOut, \outbus, 0],
-					decodeGroup);
+				synthRoutePercSynths= Synth(\route4chAmpControlLevelMeter,
+					[
+						\inbus,busBFrouterPercSynths,
+						\outbus,busBFrouterPercSynthsPostFader,
+						\kbus,kBusPercSynthsAmpControl,
+						\replyRate, 10.0,
+						\peakLag,1,
+						\repID,3
+				],afterSourceGroup);
+
+				//roteia ataques reversos diretamente ao decoder ambisonics
+				synthRoutePercSynthsToDecode = Synth(\route4ch,
+					[
+						\inbus,busBFrouterPercSynthsPostFader,
+						\outbus,busBFtoDecodeMain],preDecodeGroup);
+
+				//roteia ataques reversos ao string reverb
+				synthRoutePercSynthsToStringResonance = Synth(\route4ch,
+					[
+						\inbus,busBFrouterPercSynthsPostFader,
+						\outbus,busBFrouterStringResonanceIn],tailProcessingGroup);
+
+
+				synthRouteStringResonance = Synth(\route4chAmpControlLevelMeter,
+					[
+						\inbus,busBFrouterStringResonanceOut,
+						\outbus,busBFtoDecodeMain,
+						\kbus,kBusStringResonanceAmpControl,
+						\replyRate, 10.0,
+						\peakLag,1,
+						\repID,3
+				],afterSourceGroup);
+
+				//
+				//
+				// synthDecoderDrySounds = Synth(\BFdecoder,
+				// 	[\ambInbus, busBFtoDecodeSynthSoundsIn, \outbus, 0],
+				// decodeGroup);
+				//
+				// synthDecoderRessonances = Synth(\BFdecoder,
+				// 	[\ambInbus, busBFtoDecodeSynthSoundsOut, \outbus, 0],
+				// decodeGroup);
 
 				synthArrayStringVerbs = [60,61,63,64,65,66,71,73].collect({arg midiNote;
 
 					Synth(\bfKarplusVerb, [
 						\bfInBus,
-						busBFtoDecodeSynthSoundsIn,
+						busBFrouterStringResonanceIn,
 						\bfOutBus,
-						busBFtoDecodeSynthSoundsOut,
-						/*						\outBus,
-						0,*/
-						\inamp,-16.dbamp,
+						busBFrouterStringResonanceOut,
+						\inamp,1/8,
 						\lpf, 5000,
 						//						\rq, 0.03,
 						\freq, midiNote.midicps,
@@ -1032,16 +1199,196 @@
 
 
 
-	levelAdjustmentsTitleView = UserView(leteControlTab,Rect(304,2,500,29)).background_(Color.hsv(1,0,0.2));
+	levelAdjustmentsTitleView = UserView(leteControlTab,Rect(304,2,550,29)).background_(Color.hsv(1,0,0.2));
 	levelAdjustmentsTitleViewTitleText = StaticText.new(levelAdjustmentsTitleView,Rect(10,3,190,20)).string_("LEVELS CONTROL").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
 
-	levelAdjustmentsView = UserView(leteControlTab,Rect(304,31,500,400)).background_(Color.hsv(1,0,0.7));
-
-	levelAdjustmentsLivePianoFaderText = StaticText.new(levelAdjustmentsView,Rect(40,15,50,25)).string_("LIVE").font_(Font("Arial",16,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
-	levelAdjustmentsLivePianoFader = Slider(levelAdjustmentsView, Rect(40,40,50,200));
+	levelAdjustmentsView = UserView(leteControlTab,Rect(304,31,550,400)).background_(Color.hsv(1,0,0.7));
 
 
+	{var xpos=40,ypos=15;
+		levelAdjustmentsLivePianoFaderText = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos,50,25)).string_("LIVE").font_(Font("Arial",16,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+		levelAdjustmentsLivePianoFaderText2 = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos+18,50,20)).string_("(direct)").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
 
+		levelAdjustmentsLivePianoFader = Slider(levelAdjustmentsView, Rect(xpos,ypos+35,50,212)).value_(livePianoFaderPos).action_({arg slider;
+			var val,conv,lastkbusval;
+
+			val = slider.value;
+			conv = faderPosTodB.(val);
+			livePianoFaderPos = val;
+			livePianoFaderdB = conv;
+
+			~letePrefs.put(\livePianoFaderPos,livePianoFaderPos);
+			~letePrefs.put(\livePianoFaderdB,livePianoFaderdB);
+
+			serveron.if({
+				kBusLivePianoAmpControl.setSynchronous(livePianoFaderdB.dbamp);
+			});
+
+			// Synth(\kenvdBamp,
+			// 	[
+			// 		\outkBus,kBusLivePianoAmpControl,
+			// 		\initVal,lastkbusval,
+			// 		\endVal, livePianoFaderdB,
+			// 		\dur, 0.01,
+			// \curve,\sin],sourceGroup);
+
+
+
+			levelAdjustmentsLivePianoNumber.string = conv.round(0.1).asString;
+		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.65,0.5,0.5)).knobColor_(Color.hsv(0.17,0.9,0.3));
+
+		levelAdjustmentsLivePianoNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(livePianoFaderdB.round(0.1).asString);
+	}.value;
+
+
+
+	{var xpos=140,ypos=15;
+		levelAdjustmentsReverseAttacksFaderText = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos,50,25)).string_("reverse\nattacks").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+		// levelAdjustmentsLivePianoFaderText2 = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos+18,50,20)).string_("(direct)").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+
+		levelAdjustmentsReverseAttacksFader = Slider(levelAdjustmentsView, Rect(xpos,ypos+35,50,212)).value_(reverseAttacksFaderPos).action_({arg slider;
+			var val,conv,lastkbusval;
+
+			val = slider.value;
+			conv = faderPosTodB.(val);
+			reverseAttacksFaderPos = val;
+			reverseAttacksFaderdB = conv;
+
+			~letePrefs.put(\reverseAttacksFaderPos,reverseAttacksFaderPos);
+			~letePrefs.put(\reverseAttacksFaderdB,reverseAttacksFaderdB);
+
+			serveron.if({
+				kBusReverseAttacksAmpControl.setSynchronous(reverseAttacksFaderdB.dbamp);
+			});
+			// Synth(\kenvdBamp,
+			// 	[
+			// 		\outkBus,kBusLivePianoAmpControl,
+			// 		\initVal,lastkbusval,
+			// 		\endVal, livePianoFaderdB,
+			// 		\dur, 0.01,
+			// \curve,\sin],sourceGroup);
+
+
+
+			levelAdjustmentsReverseAttacksNumber.string = conv.round(0.1).asString;
+		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.07,0.4,0.6)).knobColor_(Color.hsv(0.17,0.9,0.3));
+
+		levelAdjustmentsReverseAttacksNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(reverseAttacksFaderdB.round(0.1).asString);
+	}.value;
+
+
+
+	{var xpos=240,ypos=15;
+		levelAdjustmentsPercSynthsFaderText = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos,50,25)).string_("perc.\nsynths").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+		// levelAdjustmentsLivePianoFaderText2 = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos+18,50,20)).string_("(direct)").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+
+		levelAdjustmentsPercSynthsFader = Slider(levelAdjustmentsView, Rect(xpos,ypos+35,50,212)).value_(percSynthsFaderPos).action_({arg slider;
+			var val,conv,lastkbusval;
+
+			val = slider.value;
+			conv = faderPosTodB.(val);
+			percSynthsFaderPos = val;
+			percSynthsFaderdB = conv;
+
+			~letePrefs.put(\percSynthsFaderPos,percSynthsFaderPos);
+			~letePrefs.put(\percSynthsFaderdB,percSynthsFaderdB);
+
+			serveron.if({
+				kBusPercSynthsAmpControl.setSynchronous(percSynthsFaderdB.dbamp);
+			});
+			// Synth(\kenvdBamp,
+			// 	[
+			// 		\outkBus,kBusLivePianoAmpControl,
+			// 		\initVal,lastkbusval,
+			// 		\endVal, livePianoFaderdB,
+			// 		\dur, 0.01,
+			// \curve,\sin],sourceGroup);
+
+
+
+			levelAdjustmentsPercSynthsNumber.string = conv.round(0.1).asString;
+		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.35,0.5,0.5)).knobColor_(Color.hsv(0.17,0.9,0.3));
+
+		levelAdjustmentsPercSynthsNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(percSynthsFaderdB.round(0.1).asString);
+	}.value;
+
+
+
+
+	{var xpos=340,ypos=15;
+		levelAdjustmentsStringResonanceFaderText = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos,50,25)).string_("string\nreson.").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+		// levelAdjustmentsLivePianoFaderText2 = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos+18,50,20)).string_("(direct)").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+
+		levelAdjustmentsStringResonanceFader = Slider(levelAdjustmentsView, Rect(xpos,ypos+35,50,212)).value_(stringResonanceFaderPos).action_({arg slider;
+			var val,conv,lastkbusval;
+
+			val = slider.value;
+			conv = faderPosTodB.(val);
+			stringResonanceFaderPos = val;
+			stringResonanceFaderdB = conv;
+
+			~letePrefs.put(\stringResonanceFaderPos,stringResonanceFaderPos);
+			~letePrefs.put(\stringResonanceFaderdB,stringResonanceFaderdB);
+
+			serveron.if({
+				kBusStringResonanceAmpControl.setSynchronous(stringResonanceFaderdB.dbamp);
+			});
+			// Synth(\kenvdBamp,
+			// 	[
+			// 		\outkBus,kBusLivePianoAmpControl,
+			// 		\initVal,lastkbusval,
+			// 		\endVal, livePianoFaderdB,
+			// 		\dur, 0.01,
+			// \curve,\sin],sourceGroup);
+
+
+
+			levelAdjustmentsStringResonanceNumber.string = conv.round(0.1).asString;
+		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.92,0.2,0.57)).knobColor_(Color.hsv(0.17,0.9,0.3));
+
+		levelAdjustmentsStringResonanceNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(stringResonanceFaderdB.round(0.1).asString);
+	}.value;
+
+
+
+	{var xpos=440,ypos=15;
+		levelAdjustmentsMainOutFaderText = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos,70,25)).string_("MAIN").font_(Font("Arial",18,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+		// levelAdjustmentsLivePianoFaderText2 = StaticText.new(levelAdjustmentsView,Rect(xpos,ypos+18,50,20)).string_("(direct)").font_(Font("Arial",12,true)).stringColor_(Color.hsv(0,0,0.3)).align_(\center);
+
+		levelAdjustmentsMainOutFader = Slider(levelAdjustmentsView, Rect(xpos,ypos+35,70,212)).value_(mainOutFaderPos).action_({arg slider;
+			var val,conv,lastkbusval;
+
+			val = slider.value;
+			conv = faderPosTodB.(val);
+			mainOutFaderPos = val;
+			mainOutFaderdB = conv;
+
+			~letePrefs.put(\mainOutFaderPos,mainOutFaderPos);
+			~letePrefs.put(\mainOutFaderdB,mainOutFaderdB);
+
+			serveron.if({
+				kBusMainOutAmpControl.setSynchronous(mainOutFaderdB.dbamp);
+			});
+			// Synth(\kenvdBamp,
+			// 	[
+			// 		\outkBus,kBusLivePianoAmpControl,
+			// 		\initVal,lastkbusval,
+			// 		\endVal, livePianoFaderdB,
+			// 		\dur, 0.01,
+			// \curve,\sin],sourceGroup);
+
+
+
+			levelAdjustmentsMainOutNumber.string = conv.round(0.1).asString;
+		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0,0.7,0.7)).knobColor_(Color.hsv(0.3,0.9,0.8));
+
+		levelAdjustmentsMainOutNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,70,25)).string_(mainOutFaderdB.round(0.1).asString);
+	}.value;
+
+
+
+
+	//				levelAdjustmentsLivePianoNumber.string = livePianoFaderdB.round(0.1).asString;
 
 	//ações realizadas a cada onset
 	chordOnFunction = {arg thisNoteState, dinamica, freq;
@@ -1077,7 +1424,7 @@
 						startpos = secondsFromBeginning + time;
 						//					[startpos,time].postln;
 
-						{Synth(\playSlice, [\buf, liveBuffer, \outbus, busBFtoDecodeSynthSoundsIn, \amp, 0.dbamp,\rate,-1, \aziInit, 0,\aziEnd,rrand(0.4,1)*([1,-1].choose),\startpos, startpos*(s.sampleRate), \durpos,time+0.2,
+						{Synth(\playSlice, [\buf, liveBuffer, \outbus, busBFrouterReverseAttacks, \amp, 0.dbamp,\rate,-1, \aziInit, 0,\aziEnd,rrand(0.4,1)*([1,-1].choose),\startpos, startpos*(s.sampleRate), \durpos,time+0.2,
 							\freqBP,freq,\rqBP,0.5],sourceGroup)}.defer(time);
 
 					});
@@ -1302,13 +1649,13 @@
 						modfreq = [0.12,0.35,0.567,0.91,1.13,1.378,1.82,2.217].choose * essanota;
 						Synth(\oscPings,
 							[
-								\outbusBF, busBFtoDecodeSynthSoundsIn,
+								\outbusBF, busBFrouterPercSynths,
 								\freq, essanota,
 								\freqmod, modfreq,
 								\azi, rrand(-pi,pi),
 								\curve, -12,
 								\rho, 1,//rrand(0.3,1.3),
-								\amp, thisamp.linlin(-50,0.0,-12,-4).dbamp,//(thisamp).dbamp,
+								\amp, thisamp.linlin(-50,0.0,-15.0,0).dbamp,//(thisamp).dbamp,
 								\dur, rrand(0.8,5.2),//thisamp.lincurve(0,-40.0,0.125,1.25),
 								//								\envbuf, grainEnvBuf,
 								\modind, modI/30,//rrand((midi).midicps*0.1,(midi).midicps*0.5),
