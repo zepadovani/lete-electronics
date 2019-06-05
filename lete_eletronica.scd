@@ -40,7 +40,7 @@
 	var mic1LevelIndicatorText,mic2LevelIndicatorText;
 	var mic1LevelIndicator,mic2LevelIndicator;
 	var mapdBtoVuNormalFunction;
-	var levelsOSCResponder;
+	var levelsOSCResponder, levelsOSCRoutersResponders;
 	var numDeviceInputs = 16;
 	var numDeviceOutputs = 16;
 	var audioFileBuffer,liveBuffer;
@@ -122,23 +122,44 @@
 
 	var routeStereoPianoToBFSynth, synthMainDecoder, synthRouteReverseAttacks, synthRouteReverseAttacksToDecode, synthRouteReverseAttacksToStringResonance,synthRoutePercSynths,synthRoutePercSynthsToDecode,synthRoutePercSynthsToStringResonance,synthRouteStringResonance;
 
+	var synthRouteMicsLive;
+
 
 	var levelAdjustmentsTitleView,levelAdjustmentsTitleViewTitleText,levelAdjustmentsView;
-	var levelAdjustmentsLivePianoFaderText,	levelAdjustmentsLivePianoFaderText2,levelAdjustmentsLivePianoFader,levelAdjustmentsLivePianoNumber;
+	var levelAdjustmentsLivePianoFaderText,	levelAdjustmentsLivePianoFaderText2,levelAdjustmentsLivePianoFader,levelAdjustmentsLivePianoNumber,levelAdjustmentsLivePianoLevelIndicator;
 	var livePianoFaderPos, livePianoFaderdB;
 
-	var levelAdjustmentsReverseAttacksFaderText, levelAdjustmentsReverseAttacksFader, levelAdjustmentsReverseAttacksNumber, reverseAttacksFaderPos, reverseAttacksFaderdB;
+	var levelAdjustmentsReverseAttacksFaderText, levelAdjustmentsReverseAttacksFader, levelAdjustmentsReverseAttacksNumber, reverseAttacksFaderPos, reverseAttacksFaderdB,levelAdjustmentsReverseAttacksLevelIndicator;
 
-	var levelAdjustmentsPercSynthsFaderText, levelAdjustmentsPercSynthsFader, levelAdjustmentsPercSynthsNumber, percSynthsFaderPos, percSynthsFaderdB;
+	var levelAdjustmentsPercSynthsFaderText, levelAdjustmentsPercSynthsFader, levelAdjustmentsPercSynthsNumber, percSynthsFaderPos, percSynthsFaderdB,levelAdjustmentsPercSynthsLevelIndicator;
 
-	var levelAdjustmentsStringResonanceFaderText, levelAdjustmentsStringResonanceFader, levelAdjustmentsStringResonanceNumber, stringResonanceFaderPos, stringResonanceFaderdB;
+	var levelAdjustmentsStringResonanceFaderText, levelAdjustmentsStringResonanceFader, levelAdjustmentsStringResonanceNumber, stringResonanceFaderPos, stringResonanceFaderdB, levelAdjustmentsStringResonanceLevelIndicator;
 
-	var levelAdjustmentsMainOutFaderText, levelAdjustmentsMainOutFader, levelAdjustmentsMainOutNumber, mainOutFaderPos, mainOutFaderdB;
+	var levelAdjustmentsMainOutFaderText, levelAdjustmentsMainOutFader, levelAdjustmentsMainOutNumber, mainOutFaderPos, mainOutFaderdB,levelAdjustmentsMainOutLevelIndicator;
 
 	var faderPosTodB, dBToFaderPos;
 
 	var serveron=false;
+	var showPlayFileButton;
+	var pianoLocText,pianoAzi,pianoRho,pianoAziSlider,aziSliderPoint;
 
+	showPlayFileButton = {
+		playFileButton = Button(playControlView, Rect(150,150,130,30)).states_([
+			["Play Audio File", Color.hsv(0.35,0.4,0.9), Color.hsv(0,0,0.6)],
+			["Stop Audio File", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
+		]).action_({arg i;
+			var valor;
+			valor = i.value;
+
+			(valor == 1).if(
+				{playAudioFileRoutine.value;},
+				{stopAudioFileRoutine.value;
+			});
+
+			/*		{
+			}.fork(AppClock);*/
+		});
+	};
 
 	currentEnvironment.clear;
 
@@ -282,6 +303,8 @@
 	mic1BusSetup = ~letePrefs.at(\mic1);
 	mic2BusSetup = ~letePrefs.at(\mic2);
 	decodeSelected = ~letePrefs.at(\decodeSetup);
+	pianoAzi  = ~letePrefs.at(\pianoAzi).asFloat;
+	pianoRho  = ~letePrefs.at(\pianoRho).asFloat;
 
 	playMode = ~letePrefs.at(\playMode);
 
@@ -715,10 +738,10 @@
 	});
 
 
-	serverBootView = UserView(letePrefsTab, Rect(511,130,500,656)).background_(Color.hsv(0,0,0.4));
-
-	serverBootTitleView = UserView(serverBootView,Rect(0,0,501,25)).background_(Color.hsv(1,0,0.2));
-	serverBootTitle = StaticText.new(serverBootTitleView,Rect(10,3,390,20)).string_("SERVER CONTROL").font_(Font("Arial",16,true)).stringColor_(Color.hsv(0,0,0.9));
+	// serverBootView = UserView(letePrefsTab, Rect(511,130,500,656)).background_(Color.hsv(0,0,0.4));
+	//
+	// serverBootTitleView = UserView(serverBootView,Rect(0,0,501,25)).background_(Color.hsv(1,0,0.2));
+	// serverBootTitle = StaticText.new(serverBootTitleView,Rect(10,3,390,20)).string_("SERVER CONTROL").font_(Font("Arial",16,true)).stringColor_(Color.hsv(0,0,0.9));
 
 
 	serverBootButton = Button(leteTitleView,Rect(990,3,100,34))
@@ -770,9 +793,9 @@
 	};
 
 	runStartServerRoutine = {
-		{var cond;
+		{var condition;
 
-			cond = Condition.new;
+			condition = Condition.new;
 
 			leteMainWindow.background_(Color.hsv(0.35,0.2,0.8,1));
 			leteTitleView.background_(Color.hsv(0,0.5,0.35));
@@ -784,6 +807,7 @@
 
 				serveron = true;
 
+
 				audioFileBuffer = Buffer.read(s,Document.current.dir +/+ "lete_render_midi_pedal_correto.wav");
 
 				liveBuffer = Buffer.alloc(s, s.sampleRate * (10 * 60), 2);
@@ -794,7 +818,7 @@
 				mic2InterfaceBus = Bus.new('audio',mic2BusSetup.asInteger + numDeviceInputs,1,s);
 
 				pianoStereoBus = Bus.new('audio',mic2InterfaceBus.index + 1,2,s);
-//				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
+				//				pianoBFBus = Bus.new('audio',pianoStereoBus.index + 4,4,s);
 
 				//rotear para esse bus todos os roteadores que leem kbus e mandam replies com picos
 				busBFtoDecodeMain = Bus.new('audio',140,4,s);
@@ -803,20 +827,20 @@
 
 				//esses buses leem a saida de processos que geram sons bf e escala amplitudes utilizando
 				//kbuses, enviando os sinais, em seguida, para o decoder geral (tambem leem picos)
-//				busBFrouterLivePiano = Bus.new('audio',144,4,s); 				//unico desenecessario, pq já faz router e PeakFollowing....
+				//				busBFrouterLivePiano = Bus.new('audio',144,4,s); 				//unico desenecessario, pq já faz router e PeakFollowing....
 				busBFrouterReverseAttacks = Bus.new('audio',148,4,s);
 				busBFrouterPercSynths = Bus.new('audio',152,4,s);
-				busBFrouterReverseAttacksPostFader = Bus.new('audio',154,4,s); //NOVO
-				busBFrouterPercSynthsPostFader  = Bus.new('audio',158,4,s);//NOVO
+				busBFrouterReverseAttacksPostFader = Bus.new('audio',156,4,s); //NOVO
+				busBFrouterPercSynthsPostFader  = Bus.new('audio',160,4,s);//NOVO
 
 
-				busBFrouterStringResonanceIn = Bus.new('audio',156,4,s);
-				busBFrouterStringResonanceOut = Bus.new('audio',160,4,s);
+				busBFrouterStringResonanceIn = Bus.new('audio',164,4,s);
+				busBFrouterStringResonanceOut = Bus.new('audio',168,4,s);
 
 
 
-//				busBFtoDecodeSynthSoundsIn = Bus.new('audio',170,4,s);
-//				busBFtoDecodeSynthSoundsOut = Bus.new('audio',174,4,s);
+				//				busBFtoDecodeSynthSoundsIn = Bus.new('audio',170,4,s);
+				//				busBFtoDecodeSynthSoundsOut = Bus.new('audio',174,4,s);
 
 
 				kBusLivePianoAmpControl = Bus.new('control',0,1,s);
@@ -825,12 +849,14 @@
 				kBusStringResonanceAmpControl = Bus.new('control',3,1,s);
 				kBusMainOutAmpControl = Bus.new('control',4,1,s);
 
-				s.sync(cond);
+				s.sync(condition);
 				kBusLivePianoAmpControl.setSynchronous(livePianoFaderdB.dbamp);
 				kBusReverseAttacksAmpControl.setSynchronous(reverseAttacksFaderdB.dbamp);
 				kBusPercSynthsAmpControl.setSynchronous(percSynthsFaderdB.dbamp);
 				kBusStringResonanceAmpControl.setSynchronous(stringResonanceFaderdB.dbamp);
 				kBusMainOutAmpControl.setSynchronous(mainOutFaderdB.dbamp);
+
+				s.sync(condition);
 
 
 				sourceGroup = Group.new;
@@ -845,12 +871,28 @@
 				decodeGroup = Group.new(preDecodeGroup,\addAfter);
 				postDecodeGroup = Group.new(decodeGroup,\addAfter);
 
+
+				s.sync(condition);
+
+				(playMode == "Audio File").if({
+					{showPlayFileButton.value}.defer(1);
+				});
+
+				(playMode == "Live").if({
+					synthRouteMicsLive = Synth(\route1chX2to2ch, [
+						\inbus1,mic1InterfaceBus,
+						\inbus2,mic2InterfaceBus,
+						\outbus,pianoStereoBus
+					],sourceGroup);
+				});
+
 				routeStereoPianoToBFSynth = Synth(\routeStereoToBF,
 					[
 						\inbus, pianoStereoBus,
 						\outbus, busBFtoDecodeMain,
 						\kbus,kBusLivePianoAmpControl,
-						\azi, 0, //AJUSTAR
+						\azi, pianoAzi, //AJUSTAR
+						\rho, pianoRho,
 						\env, Env([0,1,0],[0.1,5],\sin,1).asArray,
 						\replyRate, 10.0,
 						\amp,1,
@@ -866,11 +908,13 @@
 						\amp,1,
 						\replyRate, 10.0,
 						\peakLag,1,
-						\repID,15
+						\repID,5
 				],decodeGroup);
 
-/*				Synth(\BFdecoder,
-					[\ambInbus, busBFtoDecodeMain, \outbus, 0],
+
+
+				/*				Synth(\BFdecoder,
+				[\ambInbus, busBFtoDecodeMain, \outbus, 0],
 				decodeGroup);*/
 
 				//Roteiam sinais BF para o decoder geral, incorporando controles individuais de amplitude
@@ -927,8 +971,8 @@
 						\kbus,kBusStringResonanceAmpControl,
 						\replyRate, 10.0,
 						\peakLag,1,
-						\repID,3
-				],afterSourceGroup);
+						\repID,4
+				],preDecodeGroup);
 
 				//
 				//
@@ -947,12 +991,12 @@
 						busBFrouterStringResonanceIn,
 						\bfOutBus,
 						busBFrouterStringResonanceOut,
-						\inamp,1/8,
+						\inamp,1,
 						\lpf, 5000,
 						//						\rq, 0.03,
 						\freq, midiNote.midicps,
 						\aten2,0.99,
-						\at2,0.99],decodeGroup)
+						\at2,0.99],reverbGroupB)
 				});
 
 
@@ -963,24 +1007,7 @@
 
 				audioAnalyseSynth = Synth(\noteAnalyzerPolyPitch, [\pianoStereoInBus, pianoStereoBus,\timeTrig,timeThreshMeanAmpGate,\thresh,threshChordOnset,\time,timeChordOnset,\thresh2,threshNotesOnset,\time2,timeNoteOnset,\lowlevthresh,lowLevelThresh],mlisteningGroup);
 
-				s.sync(cond);
-
-
-				playFileButton = Button(playControlView, Rect(150,150,130,30))	.states_([
-					["Play Audio File", Color.hsv(0.35,0.4,0.9), Color.hsv(0,0,0.6)],
-					["Stop Audio File", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
-				]).action_({arg i;
-					var valor;
-					valor = i.value;
-
-					(valor == 1).if(
-						{playAudioFileRoutine.value;},
-						{stopAudioFileRoutine.value;
-					});
-
-					/*		{
-					}.fork(AppClock);*/
-				});
+				s.sync(condition);
 
 
 				playCount = 0;
@@ -988,8 +1015,8 @@
 				playStatusText.string = playStatusFunction.value;
 
 				mainControlButton = Button(playControlView, Rect(60,20,150,30))	.states_([
-					["Start Electronics", Color.hsv(0.35,0.4,0.2), Color.hsv(0,0,0.7)],
-					["Stop Electronics", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
+					["Go!", Color.hsv(0.35,0.4,0.2), Color.hsv(0,0,0.7)],
+					["Stop!", Color.hsv(0,0.4,0.9), Color.hsv(0,0,0.4)]
 				]).action_({arg i;
 					var valor;
 					valor = i.value;
@@ -1070,10 +1097,24 @@
 		"mode",
 		[
 			"Audio File" -> {arg item;
-				playMode = item;
+				//				playMode = item;
+
+				playMode = playModes[item.value];
+				~letePrefs.put(\playMode,"Audio File");
+
 			},
 			"Live" -> {arg item;
-				playMode = item;
+				playMode = playModes[item.value];
+				~letePrefs.put(\playMode,"Live");
+
+				serveron.if({
+					synthRouteMicsLive = Synth(\route1chX2to2ch, [
+						\inbus1,mic1InterfaceBus,
+						\inbus2,mic2InterfaceBus,
+						\outbus,pianoStereoBus
+					],sourceGroup);
+				});
+
 			}
 		],
 		initVal: playModes.indexOfEqual(playMode),
@@ -1202,7 +1243,35 @@
 	levelAdjustmentsTitleView = UserView(leteControlTab,Rect(304,2,550,29)).background_(Color.hsv(1,0,0.2));
 	levelAdjustmentsTitleViewTitleText = StaticText.new(levelAdjustmentsTitleView,Rect(10,3,190,20)).string_("LEVELS CONTROL").font_(Font("Arial",19,true,true)).stringColor_(Color.hsv(0,0,0.9));
 
-	levelAdjustmentsView = UserView(leteControlTab,Rect(304,31,550,400)).background_(Color.hsv(1,0,0.7));
+	levelAdjustmentsView = UserView(leteControlTab,Rect(304,31,550,668)).background_(Color.hsv(1,0,0.7));
+	//
+	// aziSliderPoint = Point.new;
+	// aziSliderPoint.theta = (pianoAzi + 1.5707963267949);
+	// aziSliderPoint.rho = pianoRho;
+
+
+
+	pianoLocText = StaticText.new(levelAdjustmentsView,Rect(125,325,300,25)).string_("Piano Location").font_(Font("Arial",18,true)).stringColor_(Color.hsv(0,0,0.2));
+
+//.x_(aziSliderPoint.x + 1 /2).y_(aziSliderPoint.y + 1 /2)
+	pianoAziSlider = Slider2D.new(levelAdjustmentsView,Rect(125,350,300,300)).x_((((pianoAzi + 1.5707963267949).cos * pianoRho) + 1) /2).y_((((pianoAzi + 1.5707963267949).sin * pianoRho) + 1) /2).background_(Color.hsv(0,0,0.2)).action_({arg slider2d;
+		var point,azi,rho;
+
+		point = Point(slider2d.x * 2 - 1, slider2d.y * 2 - 1).asPolar;
+		pianoAzi=((point.angle) - 1.5707963267949);
+		pianoRho=point.rho;
+
+		~letePrefs.put(\pianoAzi, pianoAzi);
+		~letePrefs.put(\pianoRho, pianoRho);
+
+		(serveron).if({
+
+			routeStereoPianoToBFSynth.set(\azi,pianoAzi);
+			routeStereoPianoToBFSynth.set(\rho,pianoRho);
+
+		});
+
+	});
 
 
 	{var xpos=40,ypos=15;
@@ -1238,6 +1307,9 @@
 		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.65,0.5,0.5)).knobColor_(Color.hsv(0.17,0.9,0.3));
 
 		levelAdjustmentsLivePianoNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(livePianoFaderdB.round(0.1).asString);
+
+		levelAdjustmentsLivePianoLevelIndicator = LevelIndicator(levelAdjustmentsView,Rect(xpos+60,ypos+35,15,212)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
 	}.value;
 
 
@@ -1274,6 +1346,9 @@
 		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.07,0.4,0.6)).knobColor_(Color.hsv(0.17,0.9,0.3));
 
 		levelAdjustmentsReverseAttacksNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(reverseAttacksFaderdB.round(0.1).asString);
+
+		levelAdjustmentsReverseAttacksLevelIndicator = LevelIndicator(levelAdjustmentsView,Rect(xpos+60,ypos+35,15,212)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
 	}.value;
 
 
@@ -1310,6 +1385,9 @@
 		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.35,0.5,0.5)).knobColor_(Color.hsv(0.17,0.9,0.3));
 
 		levelAdjustmentsPercSynthsNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(percSynthsFaderdB.round(0.1).asString);
+
+		levelAdjustmentsPercSynthsLevelIndicator = LevelIndicator(levelAdjustmentsView,Rect(xpos+60,ypos+35,15,212)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
 	}.value;
 
 
@@ -1347,6 +1425,10 @@
 		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0.92,0.2,0.57)).knobColor_(Color.hsv(0.17,0.9,0.3));
 
 		levelAdjustmentsStringResonanceNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,50,25)).string_(stringResonanceFaderdB.round(0.1).asString);
+
+		levelAdjustmentsStringResonanceLevelIndicator = LevelIndicator(levelAdjustmentsView,Rect(xpos+60,ypos+35,15,212)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
+
 	}.value;
 
 
@@ -1383,6 +1465,9 @@
 		}).focusColor_(Color.hsv(0.3,1,0.2,0.8)).background_(Color.hsv(0,0.7,0.7)).knobColor_(Color.hsv(0.3,0.9,0.8));
 
 		levelAdjustmentsMainOutNumber = TextField.new(levelAdjustmentsView,Rect(xpos,ypos+255,70,25)).string_(mainOutFaderdB.round(0.1).asString);
+
+		levelAdjustmentsMainOutLevelIndicator = LevelIndicator(levelAdjustmentsView,Rect(xpos+80,ypos+35,25,212)).drawsPeak_(true).style_(\led).stepWidth_(2).numTicks_(9).warning_(0.8).critical_(0.93);
+
 	}.value;
 
 
@@ -1838,6 +1923,42 @@
 			};
 		}.defer;
 	},'/level', s.addr);
+
+
+	levelsOSCRoutersResponders = OSCFunc({arg msg;
+		{
+			case
+			{msg[2] == 1}{var thisamp;
+				thisamp = [msg[3],msg[5]].maxItem;
+				levelAdjustmentsLivePianoLevelIndicator.value = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+				levelAdjustmentsLivePianoLevelIndicator.peakLevel = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 2}{var thisamp;
+				thisamp = [msg[3],msg[5],msg[7],msg[9]].maxItem;
+				levelAdjustmentsReverseAttacksLevelIndicator.value = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+				levelAdjustmentsReverseAttacksLevelIndicator.peakLevel = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 3}{var thisamp;
+
+				thisamp = [msg[3],msg[5],msg[7],msg[9]].maxItem;
+				levelAdjustmentsPercSynthsLevelIndicator.value = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+				levelAdjustmentsPercSynthsLevelIndicator.peakLevel = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 4}{var thisamp;
+
+				thisamp = [msg[3],msg[5],msg[7],msg[9]].maxItem;
+				levelAdjustmentsStringResonanceLevelIndicator.value = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+				levelAdjustmentsStringResonanceLevelIndicator.peakLevel = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			{msg[2] == 5}{var thisamp;
+
+				thisamp = [msg[3],msg[5],msg[7],msg[9]].maxItem;
+				levelAdjustmentsMainOutLevelIndicator.value = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+				levelAdjustmentsMainOutLevelIndicator.peakLevel = thisamp.ampdb.linlin(-80.0,0,0,1,\min);
+			}
+			;
+		}.defer;
+	},'/routers', s.addr);
 
 
 

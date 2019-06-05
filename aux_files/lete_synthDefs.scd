@@ -60,7 +60,7 @@ SynthDef(\mainBFdecoder,
 		#w,x,y,z = In.ar(ambInbus,4)*amp*kbusin;
 		decode = Limiter.ar(BFDecode1.ar(w,x,y,z, ~aziEspaco),-1.dbamp);
 		Out.ar(outBus,decode);
-		peak = SendPeakRMS.ar(decode,replyRate,peakLag,'/routers',repID);
+		peak = SendPeakRMS.ar(B2A.ar(w,x,y,z),replyRate,peakLag,'/routers',repID);
 	}
 ).add;
 
@@ -253,6 +253,15 @@ SynthDef(\route4ch, {arg inbus,outbus,amp=1;
 	in = In.ar(inbus,4)*amp;
 	Out.ar(outbus,in);
 }).add;
+
+SynthDef(\route1chX2to2ch, {arg inbus1,inbus2,outbus,amp=1;
+	var in1,in2,out;
+	in1 = In.ar(inbus1,1);
+	in2 = In.ar(inbus2,1);
+	Out.ar(outbus,[in1,in2]*amp);
+}).add;
+
+
 
 
 	
